@@ -1,0 +1,5 @@
+matplotlib==3.0.3
+scipy==1.1.0
+numpy==1.16.2
+pyDOE==0.3.8
+tensorflow==2.0.0-beta1
