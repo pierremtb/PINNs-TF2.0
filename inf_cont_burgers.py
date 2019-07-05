@@ -179,7 +179,7 @@ u_train = u_train [idx,:]
 
 # Creating the model and training
 pinn = PhysicsInformedNN(layers)
-pinn.fit(X_u_train, u_train, X_f_train, epochs=50)
+pinn.fit(X_u_train, u_train, X_f_train, epochs=50000)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, f_pred = pinn.predict(X_star)
