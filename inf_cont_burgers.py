@@ -22,16 +22,19 @@ appDataPath = os.path.join(repoPath, 'appendix', 'Data')
 sys.path.insert(0, utilsPath)
 from plotting import newfig, savefig
 
+#%% HYPER PARAMETERS
+# Initial data size on the solution u
+N_u = 100
+# Collocation data size on f(t,x)
+N_f = 10000
+# DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
+layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
+
 #%% PREPARING THE DATA
 
 print("TensorFlow version: {}".format(tf.__version__))
 print("Eager execution: {}".format(tf.executing_eagerly()))
 print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
-
-# Initial data size on the solution u
-N_u = 100
-# Collocation data size on f(t,x)
-N_f = 10000
 
 # Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
 data = scipy.io.loadmat(os.path.join(appDataPath, 'burgers_shock.mat'))
@@ -82,19 +85,12 @@ u_train = u_train [idx,:]
 
 #%% CREATING THE MODEL AND TRAINING
 
-# DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
-u_model = tf.keras.Sequential([
-  tf.keras.layers.InputLayer(input_shape=(2,)),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(1, activation=tf.nn.tanh)
-])
+# Adding the different basic Keras layers
+u_model = tf.keras.Sequential()
+u_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
+for w in layers[1:]:
+  u_model.add(tf.keras.layers.Dense(w, activation=tf.nn.tanh))
+print(u_model.summary())
 
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
@@ -141,7 +137,7 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
 # Compiling and training the Keras model
 u_model.compile(loss=pinnLoss(u_model, x_f, t_f), optimizer=optimizer)
-u_model.fit(X_u_train, u_train, batch_size=None, epochs=20, callbacks=[tensorboard_callback])
+u_model.fit(X_u_train, u_train, batch_size=None, epochs=50000, callbacks=[tensorboard_callback])
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred = u_model.predict(X_star)
