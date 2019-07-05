@@ -22,7 +22,86 @@ appDataPath = os.path.join(repoPath, 'appendix', 'Data')
 sys.path.insert(0, utilsPath)
 from plotting import newfig, savefig
 
-#%% PREPARING THE DATA
+#%% DEFINING THE MODEL
+
+class PhysicsInformedNN(object):
+  def __init__(self, layers):
+    # New descriptive Keras model [2, 20, …, 20, 1]
+    self.u_model = tf.keras.Sequential()
+    self.u_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
+    for width in layers[1:]:
+        self.u_model.add(tf.keras.layers.Dense(width, activation=tf.nn.tanh))
+    print(self.u_model.summary())
+    
+    # Creating the optimizer
+    self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+
+  # The actual PINN
+  def f_model(self):
+    # Using the new GradientTape paradigm of TF2.0,
+    # which keeps track of operations to get the gradient at runtime
+    with tf.GradientTape(persistent=True) as tape:
+      # Watching the two inputs we’ll need later, x and t
+      tape.watch(self.x_f)
+      tape.watch(self.t_f)
+      # Packing together the inputs
+      X_f = tf.stack([self.x_f[:,0], self.t_f[:,0]], axis=1)
+      # Getting the prediction
+      u = self.u_model(X_f)
+      # Deriving INSIDE the tape (since we’ll need the x derivative of this later, u_xx)
+      u_x = tape.gradient(u, self.x_f)
+    
+    # Getting the other derivatives
+    u_xx = tape.gradient(u_x, self.x_f)
+    u_t = tape.gradient(u, self.t_f)
+
+    # Letting the tape go
+    del tape
+
+    # Buidling the PINNs
+    return u_t + u*u_x - (0.01/np.pi)*u_xx
+
+  # Defining custom loss
+  def loss(self, u, u_pred):
+    f_pred = self.f_model()
+    return tf.reduce_mean(tf.square(u - u_pred)) + tf.reduce_mean(tf.square(f_pred))
+
+  # Computing the gradients
+  def grad(self, X, u):
+    with tf.GradientTape() as tape:
+      loss_value = self.loss(u, self.u_model(X))
+    return loss_value, tape.gradient(loss_value, self.u_model.trainable_variables)
+
+  def fit(self, X_u, u, X_f, epochs=1):
+    # Creating the tensors
+    self.X_u = tf.convert_to_tensor(X_u, dtype="float32")
+    self.u = tf.convert_to_tensor(u, dtype="float32")
+    # Separating the collocation coordinates
+    self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype="float32")
+    self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype="float32")
+
+    # Keep results for plotting
+    self.train_loss_results = []
+
+    # Training loop
+    for epoch in range(epochs):
+      # Optimization step
+      loss_value, grads = self.grad(self.X_u, self.u)
+      self.optimizer.apply_gradients(zip(grads, self.u_model.trainable_variables))
+
+      # Keeping track of loss
+      self.train_loss_results.append(loss_value)
+
+      # Logging every so often
+      if epoch % 10 == 0:
+        print("Epoch {:03d}: Loss: {:.3f}".format(epoch, loss_value))
+
+  def predict(self, X_star):
+    u_star = self.u_model(X_star)
+    f_star = self.f_model()
+    return u_star, f_star
+
+#%% RUNNING THE MODEL
 
 print("TensorFlow version: {}".format(tf.__version__))
 print("Eager execution: {}".format(tf.executing_eagerly()))
@@ -32,6 +111,8 @@ print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
 N_u = 100
 # Collocation data size on f(t,x)
 N_f = 10000
+# DeepNN topology (2 input, 8 hidden layer of 20-width, 1 output ([u])
+layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
 
 # Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
 data = scipy.io.loadmat(os.path.join(appDataPath, 'burgers_shock.mat'))
@@ -72,6 +153,8 @@ u_train = np.vstack([uu1, uu2, uu3])
 # Generating the x and t collocation points for f, with each having a N_f size
 # We pointwise add and multiply to spread the LHS over the 2D domain
 X_f_train = lb + (ub-lb)*lhs(2, N_f)
+# Pretty sure this next line isn't useful
+#X_f_train = np.vstack((X_f_train, X_u_train))
 
 # Generating a uniform random sample from ints between 0, and the size of x_u_train, of size N_u (initial data size) and without replacement (unique)
 idx = np.random.choice(X_u_train.shape[0], N_u, replace=False)
@@ -80,73 +163,12 @@ X_u_train = X_u_train[idx,:]
 # Getting the corresponding u_train
 u_train = u_train [idx,:]
 
-#%% CREATING THE MODEL AND TRAINING
-
-# DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
-u_model = tf.keras.Sequential([
-  tf.keras.layers.InputLayer(input_shape=(2,)),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(20, activation=tf.nn.tanh),
-  tf.keras.layers.Dense(1, activation=tf.nn.tanh)
-])
-
-# Creating the optimizer
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-
-# Buidling the custom loss function
-x_f = tf.convert_to_tensor(X_f_train[:, 0:1], dtype="float32")
-t_f = tf.convert_to_tensor(X_f_train[:, 1:2], dtype="float32")
-
-def f_model(x_f, t_f):
-  # Using the new GradientTape paradigm of TF2.0,
-  # which keeps track of operations to get the gradient at runtime
-  with tf.GradientTape(persistent=True) as tape:
-    # Watching the two inputs we’ll need later, x and t
-    tape.watch(x_f)
-    tape.watch(t_f)
-    # Packing together the inputs
-    X_f = tf.stack([x_f[:,0], t_f[:,0]], axis=1)
-    # Getting the prediction
-    u = u_model(X_f)
-    # Deriving INSIDE the tape (since we’ll need the x derivative of this later, u_xx)
-    u_x = tape.gradient(u, x_f)
-  
-  # Getting the other derivatives
-  u_xx = tape.gradient(u_x, x_f)
-  u_t = tape.gradient(u, t_f)
-
-  # Letting the tape go
-  del tape
-
-  # Buidling the PINNs
-  return u_t + u*u_x - (0.01/np.pi)*u_xx
-
-def pinnLoss(u_model, x_f, t_f):
-  # Defining custom loss to be returned
-  def loss(u, u_pred):
-    f_pred = f_model(x_f, t_f)
-    return tf.reduce_mean(tf.square(u - u_pred)) + tf.reduce_mean(tf.square(f_pred))
-  
-  return loss
-
-# Setting up tensorboard
-logdir = os.path.join("logs", "scalars", datetime.now().strftime("%Y%m%d-%H%M%S"))
-tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
-
-# Compiling and training the Keras model
-u_model.compile(loss=pinnLoss(u_model, x_f, t_f), optimizer=optimizer)
-u_model.fit(X_u_train, u_train, batch_size=None, epochs=20, callbacks=[tensorboard_callback])
+# Creating the model and training
+pinn = PhysicsInformedNN(layers)
+pinn.fit(X_u_train, u_train, X_f_train, epochs=50000)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
-u_pred = u_model.predict(X_star)
-
-f_pred = f_model(x_f, t_f)
+u_pred, f_pred = pinn.predict(X_star)
 
 # Getting the relative error for u
 error_u = np.linalg.norm(u_star-u_pred,2)/np.linalg.norm(u_star,2)
@@ -154,7 +176,7 @@ print('Error u: %e' % (error_u))
 
 # Interpolating the results on the whole (x,t) domain.
 # griddata(points, values, points at which to interpolate, method)
-U_pred = griddata(X_star, u_pred.flatten(), (X, T), method='cubic')
+U_pred = griddata(X_star, u_pred.numpy().flatten(), (X, T), method='cubic')
 
 #%% PLOTTING THE RESULTS
 fig, ax = newfig(1.0, 1.1)
