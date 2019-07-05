@@ -10,6 +10,7 @@ import scipy.io
 from scipy.interpolate import griddata
 from pyDOE import lhs
 import time
+from datetime import datetime
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -82,31 +83,19 @@ class PhysicsInformedNN(object):
 
     # Keep results for plotting
     self.train_loss_results = []
-    self.train_accuracy_results = []
 
     # Training loop
     for epoch in range(epochs):
-      epoch_loss_avg = tf.keras.metrics.Mean()
-      epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
-
       # Optimization step
       loss_value, grads = self.grad(self.X_u, self.u)
       self.optimizer.apply_gradients(zip(grads, self.u_model.trainable_variables))
 
-      # Track progress
-      epoch_loss_avg(loss_value)  # add current batch loss
-      # compare predicted label to actual label
-      epoch_accuracy(self.u, self.u_model(self.X_u))
-
-      # End epoch
-      self.train_loss_results.append(epoch_loss_avg.result())
-      self.train_accuracy_results.append(epoch_accuracy.result())
+      # Keeping track of loss
+      self.train_loss_results.append(loss_value)
 
       # Logging every so often
-      if epoch % 50 == 0:
-        print("Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(epoch,
-                                                                    epoch_loss_avg.result(),
-                                                                    epoch_accuracy.result()))
+      if epoch % 10 == 0:
+        print("Epoch {:03d}: Loss: {:.3f}".format(epoch, loss_value))
 
   def predict(self, X_star):
     u_star = self.u_model(X_star)
