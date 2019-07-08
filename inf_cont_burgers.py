@@ -83,13 +83,15 @@ X_u_train = X_u_train[idx,:]
 # Getting the corresponding u_train
 u_train = u_train [idx,:]
 
-#%% CREATING THE MODEL AND TRAINING
+#%% CREATING THE MODEL
 
-# Adding the different basic Keras layers
+# Adding the different basic Keras layers (with glorot==Xavier init of weights)
 u_model = tf.keras.Sequential()
 u_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
 for w in layers[1:]:
-  u_model.add(tf.keras.layers.Dense(w, activation=tf.nn.tanh))
+  u_model.add(tf.keras.layers.Dense(w, activation=tf.nn.tanh,
+                kernel_initializer='glorot_normal',
+                bias_initializer='zeros'))
 print(u_model.summary())
 
 # Creating the optimizer
@@ -137,7 +139,24 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
 # Compiling and training the Keras model
 u_model.compile(loss=pinnLoss(u_model, x_f, t_f), optimizer=optimizer)
-u_model.fit(X_u_train, u_train, batch_size=None, epochs=50000, callbacks=[tensorboard_callback])
+
+#%% TRAINING THE MODEL
+
+# Defining a custom logger
+class CustomLogger(tf.keras.callbacks.Callback):
+  def __init__(self, n):
+    self.start_time = time.time()
+    self.n = n   # print loss & acc every n epochs
+
+  def on_epoch_end(self, epoch, logs={}):
+    if epoch % self.n == 0:
+      loss = logs.get('loss')
+      elapsed = datetime.fromtimestamp(time.time() - self.start_time).strftime("%M:%S")
+      print(f"epoch = {epoch:6d}  elapsed = {elapsed}  loss = {loss:.4e}")
+
+# Doing the training
+u_model.fit(X_u_train, u_train, batch_size=None, epochs=50000,
+  verbose=0, callbacks=[tensorboard_callback, CustomLogger(50)])
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred = u_model.predict(X_star)
@@ -153,6 +172,7 @@ print('Error u: %e' % (error_u))
 U_pred = griddata(X_star, u_pred.flatten(), (X, T), method='cubic')
 
 #%% PLOTTING THE RESULTS
+
 fig, ax = newfig(1.0, 1.1)
 ax.axis('off')
 
