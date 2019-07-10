@@ -14,30 +14,51 @@ from datetime import datetime
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-repoPath = 'PINNs'
-utilsPath = os.path.join(repoPath, 'Utilities')
-dataPath = os.path.join(repoPath, 'main', 'Data')
-appDataPath = os.path.join(repoPath, 'appendix', 'Data')
+# Manually making sure the numpy random seeds are "the same" on all devices, for reproducibility in random processes
+np.random.seed(1234)
+# Same for tensorflow
+tf.random.set_seed(1234)
+
+repoPath = "../PINNs"
+utilsPath = os.path.join(repoPath, "Utilities")
+dataPath = os.path.join(repoPath, "main", "Data")
+appDataPath = os.path.join(repoPath, "appendix", "Data")
 
 sys.path.insert(0, utilsPath)
 from plotting import newfig, savefig
+import burgersutil
+
+#%% HYPER PARAMETERS
+
+# Data size on the solution u
+N_u = 2000
+# DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
+layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
+# Creating the optimizer
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+epochs = 2000
 
 #%% DEFINING THE MODEL
 
 class PhysicsInformedNN(object):
-  def __init__(self, layers):
+  def __init__(self, layers, optimizer, logger):
     # New descriptive Keras model [2, 20, …, 20, 1]
     self.u_model = tf.keras.Sequential()
     self.u_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
     for width in layers[1:]:
         self.u_model.add(tf.keras.layers.Dense(width, activation=tf.nn.tanh))
-    print(self.u_model.summary())
+
+    # Defining the two additional trainable variables for identification
+    self.lambda_1 = tf.Variable([0.0], dtype=tf.float32)
+    self.lambda_2 = tf.Variable([-6.0], dtype=tf.float32)
     
-    # Creating the optimizer
-    self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+    self.optimizer = optimizer
+    self.logger = logger
 
   # The actual PINN
-  def f_model(self):
+  def __f_model(self):
+    l1, l2 = self.get_params()
+
     # Using the new GradientTape paradigm of TF2.0,
     # which keeps track of operations to get the gradient at runtime
     with tf.GradientTape(persistent=True) as tape:
@@ -46,6 +67,8 @@ class PhysicsInformedNN(object):
       tape.watch(self.t_f)
       # Packing together the inputs
       X_f = tf.stack([self.x_f[:,0], self.t_f[:,0]], axis=1)
+
+
       # Getting the prediction
       u = self.u_model(X_f)
       # Deriving INSIDE the tape (since we’ll need the x derivative of this later, u_xx)
@@ -59,126 +82,82 @@ class PhysicsInformedNN(object):
     del tape
 
     # Buidling the PINNs
-    return u_t + u*u_x - (0.01/np.pi)*u_xx
+    return u_t + l1*u*u_x - l2*u_xx
 
   # Defining custom loss
-  def loss(self, u, u_pred):
-    f_pred = self.f_model()
-    return tf.reduce_mean(tf.square(u - u_pred)) + tf.reduce_mean(tf.square(f_pred))
+  def __loss(self, u, u_pred):
+    f_pred = self.__f_model()
+    return tf.reduce_mean(tf.square(u - u_pred)) + \
+      tf.reduce_mean(tf.square(f_pred))
 
-  # Computing the gradients
-  def grad(self, X, u):
+  def __grad(self, X, u):
     with tf.GradientTape() as tape:
-      loss_value = self.loss(u, self.u_model(X))
-    return loss_value, tape.gradient(loss_value, self.u_model.trainable_variables)
+      loss_value = self.__loss(u, self.u_model(X))
+    return loss_value, tape.gradient(loss_value, self.__wrap_training_variables())
 
-  def fit(self, X_u, u, X_f, epochs=1):
+  def __wrap_training_variables(self):
+    var = self.u_model.trainable_variables
+    var.extend([self.lambda_1, self.lambda_2])
+    return var
+
+  def get_params(self, numpy=False):
+    l1 = self.lambda_1
+    l2 = tf.exp(self.lambda_2)
+    if numpy:
+      return l1.numpy()[0], l2.numpy()[0]
+    return l1, l2
+
+  # The training function
+  def fit(self, X_u, u, epochs=1, log_epochs=50):
+    self.logger.log_train_start(self.u_model)
+
     # Creating the tensors
     self.X_u = tf.convert_to_tensor(X_u, dtype="float32")
     self.u = tf.convert_to_tensor(u, dtype="float32")
-    # Separating the collocation coordinates
-    self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype="float32")
-    self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype="float32")
-
-    # Keep results for plotting
-    self.train_loss_results = []
+    # Separating the collocation coordinates (here the same as data)
+    self.x_f = tf.convert_to_tensor(X_u[:, 0:1], dtype="float32")
+    self.t_f = tf.convert_to_tensor(X_u[:, 1:2], dtype="float32")
 
     # Training loop
     for epoch in range(epochs):
       # Optimization step
-      loss_value, grads = self.grad(self.X_u, self.u)
-      self.optimizer.apply_gradients(zip(grads, self.u_model.trainable_variables))
-
-      # Keeping track of loss
-      self.train_loss_results.append(loss_value)
+      loss_value, grads = self.__grad(self.X_u, self.u)
+      self.optimizer.apply_gradients(zip(grads, self.__wrap_training_variables()))
 
       # Logging every so often
-      if epoch % 10 == 0:
-        print("Epoch {:03d}: Loss: {:.3f}".format(epoch, loss_value))
+      if epoch % log_epochs == 0:
+        l1, l2 = self.get_params(numpy=True)
+        custom = f"l1 = {l1:5f}  l2 = {l2:8f}"
+        self.logger.log_train_epoch(epoch, loss_value, custom)
+    
+    self.logger.log_train_end(epochs, f"l1 = {l1:5f}  l2 = {l2:8f}")
 
   def predict(self, X_star):
     u_star = self.u_model(X_star)
-    f_star = self.f_model()
+    f_star = self.__f_model()
     return u_star, f_star
 
-#%% RUNNING THE MODEL
+#%% RUNNING THE MODEL and PLOTTING
 
-print("TensorFlow version: {}".format(tf.__version__))
-print("Eager execution: {}".format(tf.executing_eagerly()))
-print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
+# Getting the data
+path = os.path.join(appDataPath, "burgers_shock.mat")
+x, t, X, T, Exact_u, X_star, u_star, \
+  X_u_train, u_train = burgersutil.prep(path, N_u, noise=0.0)
 
-# Initial data size on the solution u
-N_u = 100
-# Collocation data size on f(t,x)
-N_f = 10000
-# DeepNN topology (2 input, 8 hidden layer of 20-width, 1 output ([u])
-layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
-
-# Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
-data = scipy.io.loadmat(os.path.join(appDataPath, 'burgers_shock.mat'))
-
-# Flatten makes [[]] into [], [:,None] makes it a column vector
-t = data['t'].flatten()[:,None]
-x = data['x'].flatten()[:,None]
-
-# Keeping the 2D data for the solution data (real() is maybe to make it float by default, in case of zeroes)
-Exact_u = np.real(data['usol']).T
-
-# Meshing x and t in 2D (256,100)
-X, T = np.meshgrid(x,t)
-
-# Preparing the inputs x and t (meshed as X, T) for predictions in one single array, as X_star
-X_star = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
-
-# Preparing the testing u_star
-u_star = Exact_u.flatten()[:,None]
-
-# Domain bounds (lowerbounds upperbounds) [x, t], which are here ([-1.0, 0.0] and [1.0, 1.0])
-lb = X_star.min(axis=0)
-ub = X_star.max(axis=0) 
-               
-# Getting the initial conditions (t=0)
-xx1 = np.hstack((X[0:1,:].T, T[0:1,:].T))
-uu1 = Exact_u[0:1,:].T
-# Getting the lowest boundary conditions (x=-1) 
-xx2 = np.hstack((X[:,0:1], T[:,0:1]))
-uu2 = Exact_u[:,0:1]
-# Getting the highest boundary conditions (x=1) 
-xx3 = np.hstack((X[:,-1:], T[:,-1:]))
-uu3 = Exact_u[:,-1:]
-# Stacking them in multidimensional tensors for training (X_u_train is for now the continuous boundaries)
-X_u_train = np.vstack([xx1, xx2, xx3])
-u_train = np.vstack([uu1, uu2, uu3])
-
-# Generating the x and t collocation points for f, with each having a N_f size
-# We pointwise add and multiply to spread the LHS over the 2D domain
-X_f_train = lb + (ub-lb)*lhs(2, N_f)
-# Pretty sure this next line isn't useful
-#X_f_train = np.vstack((X_f_train, X_u_train))
-
-# Generating a uniform random sample from ints between 0, and the size of x_u_train, of size N_u (initial data size) and without replacement (unique)
-idx = np.random.choice(X_u_train.shape[0], N_u, replace=False)
-# Getting the corresponding X_u_train (which is now scarce boundary/initial coordinates)
-X_u_train = X_u_train[idx,:]
-# Getting the corresponding u_train
-u_train = u_train [idx,:]
+logger = burgersutil.Logger(X_star, u_star)
 
 # Creating the model and training
-pinn = PhysicsInformedNN(layers)
-pinn.fit(X_u_train, u_train, X_f_train, epochs=50000)
+pinn = PhysicsInformedNN(layers, optimizer, logger)
+pinn.fit(X_u_train, u_train, epochs)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, f_pred = pinn.predict(X_star)
-
-# Getting the relative error for u
-error_u = np.linalg.norm(u_star-u_pred,2)/np.linalg.norm(u_star,2)
-print('Error u: %e' % (error_u))
 
 # Interpolating the results on the whole (x,t) domain.
 # griddata(points, values, points at which to interpolate, method)
 U_pred = griddata(X_star, u_pred.numpy().flatten(), (X, T), method='cubic')
 
-#%% PLOTTING THE RESULTS
+# Creating the figures
 fig, ax = newfig(1.0, 1.1)
 ax.axis('off')
 
