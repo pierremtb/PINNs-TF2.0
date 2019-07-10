@@ -18,14 +18,15 @@ np.random.seed(1234)
 # Same for tensorflow
 tf.random.set_seed(1234)
 
-repoPath = "../PINNs"
+repoPath = os.path.join("..", "PINNs")
 utilsPath = os.path.join(repoPath, "Utilities")
 dataPath = os.path.join(repoPath, "main", "Data")
 appDataPath = os.path.join(repoPath, "appendix", "Data")
 
 sys.path.insert(0, utilsPath)
+print(utilsPath)
 from plotting import newfig, savefig
-import burgersutil
+from burgersutil import prep_data, Logger
 
 #%% HYPER PARAMETERS
 
@@ -37,7 +38,7 @@ N_f = 10000
 layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-epochs = 500
+epochs = 5000
 
 #%% DEFINING THE MODEL
 
@@ -133,9 +134,9 @@ class PhysicsInformedNN(object):
 # Getting the data
 path = os.path.join(appDataPath, "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, \
-  X_u_train, u_train, X_f_train = burgersutil.prep(path, N_u, N_f, noise=0.0)
+  X_u_train, u_train, X_f_train = prep_data(path, N_u, N_f, noise=0.0)
 
-logger = burgersutil.Logger(X_star, u_star)
+logger = Logger(X_star, u_star)
 
 # Creating the model and training
 pinn = PhysicsInformedNN(layers, optimizer, logger, nu=0.01/np.pi)

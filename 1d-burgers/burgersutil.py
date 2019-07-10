@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from pyDOE import lhs
 
-def prep(path, N_u, N_f=None, noise=0.0):
+def prep_data(path, N_u, N_f=None, noise=0.0):
     # Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
     data = scipy.io.loadmat(path)
 

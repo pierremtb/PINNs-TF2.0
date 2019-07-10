@@ -9,7 +9,7 @@ git clone https://github.com/pierremtb/PINNs-TF2.0 --recursive
 ```
 
 ## Also available on Google Colab (installation-free, GPU-enabled cloud notebooks)
-- [inf_cont_burgers.ipynb](https://colab.research.google.com/drive/18d9sGP03NTudddvVhbyyCta-vf1BDs_R)
+- [PINNs for 1D Burgers Equation (TF2.0).ipynb](https://colab.research.google.com/drive/1ix0ov-2TNfgdpOwgf7edV2HuqZ6y38T3)
 
 ## Authors and citations
 For more information, please refer to the following: (https://maziarraissi.github.io/PINNs/)
