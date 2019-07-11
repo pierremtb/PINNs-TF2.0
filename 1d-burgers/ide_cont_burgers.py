@@ -12,7 +12,7 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 
-from burgersutil import prep_data, Logger, plot_results, appDataPath
+from burgersutil import prep_data, Logger, plot_cont_results, appDataPath
 
 #%% HYPER PARAMETERS
 
@@ -143,5 +143,5 @@ u_pred, f_pred = pinn.predict(X_star)
 
 #%% PLOTTING
 
-plot_results(X_star, u_pred.numpy().flatten(), X_u_train, u_train,
+plot_cont_results(X_star, u_pred.numpy().flatten(), X_u_train, u_train,
   Exact_u, X, T, x, t)

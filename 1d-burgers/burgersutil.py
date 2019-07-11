@@ -22,7 +22,7 @@ appDataPath = os.path.join(repoPath, "appendix", "Data")
 sys.path.insert(0, utilsPath)
 from plotting import newfig, savefig
 
-def prep_data(path, N_u, N_f=None, noise=0.0):
+def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, noise=0.0, idx_t_0=None, idx_t_1=None):
     # Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
     data = scipy.io.loadmat(path)
 
@@ -32,6 +32,28 @@ def prep_data(path, N_u, N_f=None, noise=0.0):
 
     # Keeping the 2D data for the solution data (real() is maybe to make it float by default, in case of zeroes)
     Exact_u = np.real(data['usol']).T
+
+    if N_n != None and q != None and ub != None and lb != None and idx_t_0 != None and idx_t_1 != None:
+      dt = t[idx_t_1] - t[idx_t_0]
+      
+      idx_x = np.random.choice(Exact_u.shape[1], N_n, replace=False) 
+      x_0 = x[idx_x,:]
+      u_0 = Exact_u[idx_t_0:idx_t_0+1,idx_x].T
+      u_0 = u_0 + noise*np.std(u_0)*np.random.randn(u_0.shape[0], u_0.shape[1])
+        
+      # Boudanry data
+      x_1 = np.vstack((lb,ub))
+      
+      # Test data
+      x_star = x
+      u_star = Exact_u[idx_t_1,:]
+
+      # Load IRK weights
+      tmp = np.float32(np.loadtxt(os.path.join(utilsPath, "IRK_weights", "Butcher_IRK%d.txt" % (q)), ndmin = 2))
+      IRK_weights = np.reshape(tmp[0:q**2+q], (q+1,q))
+      IRK_times = tmp[q**2+q:]
+
+      return x, t, dt, Exact_u, x_0, u_0, x_1, x_star, u_star, IRK_weights, IRK_times
 
     # Meshing x and t in 2D (256,100)
     X, T = np.meshgrid(x,t)
@@ -80,7 +102,7 @@ def prep_data(path, N_u, N_f=None, noise=0.0):
     return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train
 
 class Logger(object):
-  def __init__(self, X_star, u_star):
+  def __init__(self, X_star, u_star, pred_keep_last_column=False):
     print("TensorFlow version: {}".format(tf.__version__))
     print("Eager execution: {}".format(tf.executing_eagerly()))
     print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
@@ -88,12 +110,15 @@ class Logger(object):
     self.X_star = X_star
     self.u_star = u_star
     self.start_time = time.time()
+    self.pred_keep_last_column = pred_keep_last_column
 
   def __get_elapsed(self):
     return datetime.fromtimestamp(time.time() - self.start_time).strftime("%M:%S")
 
   def __get_error_u(self):
     u_pred = self.model.predict(self.X_star)
+    if self.pred_keep_last_column:
+      u_pred = u_pred[:,-1]
     return np.linalg.norm(self.u_star-u_pred,2)/np.linalg.norm(self.u_star,2)
   
   def log_train_start(self, model):
@@ -108,7 +133,7 @@ class Logger(object):
     print("==================")
     print(f"Training finished (epoch {epoch}): duration = {self.__get_elapsed()}  error = {self.__get_error_u():.4e}  " + custom)
 
-def plot_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, file=None):
+def plot_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, file=None):
 
   # Interpolating the results on the whole (x,t) domain.
   # griddata(points, values, points at which to interpolate, method)
@@ -177,6 +202,61 @@ def plot_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, file=N
   ax.set_ylim([-1.1,1.1])    
   ax.set_title('$t = 0.75$', fontsize = 10)
 
+  plt.show()
+
+  if file != None:
+    savefig(file)
+
+def plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t, file=None):
+  fig, ax = newfig(1.0, 1.2)
+  ax.axis('off')
+  
+  ####### Row 0: h(t,x) ##################    
+  gs0 = gridspec.GridSpec(1, 2)
+  gs0.update(top=1-0.06, bottom=1-1/2 + 0.1, left=0.15, right=0.85, wspace=0)
+  ax = plt.subplot(gs0[:, :])
+  
+  h = ax.imshow(Exact_u.T, interpolation='nearest', cmap='rainbow', 
+                extent=[t.min(), t.max(), x_star.min(), x_star.max()], 
+                origin='lower', aspect='auto')
+  divider = make_axes_locatable(ax)
+  cax = divider.append_axes("right", size="5%", pad=0.05)
+  fig.colorbar(h, cax=cax)
+      
+  line = np.linspace(x.min(), x.max(), 2)[:,None]
+  ax.plot(t[idx_t_0]*np.ones((2,1)), line, 'w-', linewidth = 1)
+  ax.plot(t[idx_t_1]*np.ones((2,1)), line, 'w-', linewidth = 1)
+  
+  ax.set_xlabel('$t$')
+  ax.set_ylabel('$x$')
+  leg = ax.legend(frameon=False, loc = 'best')
+  ax.set_title('$u(t,x)$', fontsize = 10)
+  
+  
+  ####### Row 1: h(t,x) slices ##################    
+  gs1 = gridspec.GridSpec(1, 2)
+  gs1.update(top=1-1/2-0.05, bottom=0.15, left=0.15, right=0.85, wspace=0.5)
+  
+  ax = plt.subplot(gs1[0, 0])
+  ax.plot(x,Exact_u[idx_t_0,:], 'b-', linewidth = 2) 
+  ax.plot(x_0, u_0, 'rx', linewidth = 2, label = 'Data')      
+  ax.set_xlabel('$x$')
+  ax.set_ylabel('$u(t,x)$')    
+  ax.set_title('$t = %.2f$' % (t[idx_t_0]), fontsize = 10)
+  ax.set_xlim([lb-0.1, ub+0.1])
+  ax.legend(loc='upper center', bbox_to_anchor=(0.8, -0.3), ncol=2, frameon=False)
+
+
+  ax = plt.subplot(gs1[0, 1])
+  ax.plot(x, Exact_u[idx_t_1,:], 'b-', linewidth = 2, label = 'Exact') 
+  ax.plot(x_star, u_1_pred[:,-1], 'r--', linewidth = 2, label = 'Prediction')      
+  ax.set_xlabel('$x$')
+  ax.set_ylabel('$u(t,x)$')    
+  ax.set_title('$t = %.2f$' % (t[idx_t_1]), fontsize = 10)    
+  ax.set_xlim([lb-0.1, ub+0.1])
+  
+  ax.legend(loc='upper center', bbox_to_anchor=(0.1, -0.3), ncol=2, frameon=False)
+    
   plt.show()
 
   if file != None:
