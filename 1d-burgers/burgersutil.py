@@ -12,9 +12,9 @@ from scipy.interpolate import griddata
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-# "." for Colab, and ".." for GitHub
-# repoPath = os.path.join(".", "PINNs")
-repoPath = os.path.join("..", "PINNs")
+# "." for Colab/VSCode, and ".." for GitHub
+repoPath = os.path.join(".", "PINNs")
+# repoPath = os.path.join("..", "PINNs")
 utilsPath = os.path.join(repoPath, "Utilities")
 dataPath = os.path.join(repoPath, "main", "Data")
 appDataPath = os.path.join(repoPath, "appendix", "Data")
@@ -42,7 +42,7 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
       u_0 = u_0 + noise*np.std(u_0)*np.random.randn(u_0.shape[0], u_0.shape[1])
         
       # Boudanry data
-      x_1 = np.vstack((lb,ub))
+      x_1 = np.vstack((lb, ub))
       
       # Test data
       x_star = x
@@ -102,7 +102,7 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
     return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train
 
 class Logger(object):
-  def __init__(self, X_star, u_star, pred_keep_last_column=False):
+  def __init__(self, X_star, u_star):
     print("TensorFlow version: {}".format(tf.__version__))
     print("Eager execution: {}".format(tf.executing_eagerly()))
     print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
@@ -110,21 +110,18 @@ class Logger(object):
     self.X_star = X_star
     self.u_star = u_star
     self.start_time = time.time()
-    self.pred_keep_last_column = pred_keep_last_column
 
   def __get_elapsed(self):
     return datetime.fromtimestamp(time.time() - self.start_time).strftime("%M:%S")
 
   def __get_error_u(self):
-    u_pred = self.model.predict(self.X_star)
-    if self.pred_keep_last_column:
-      u_pred = u_pred[:,-1]
-    return np.linalg.norm(self.u_star-u_pred,2)/np.linalg.norm(self.u_star,2)
+    return self.model.error(self.X_star, self.u_star)
   
   def log_train_start(self, model):
     print("\nTraining started")
     print("================")
     self.model = model
+    print(self.model.summary())
 
   def log_train_epoch(self, epoch, loss, custom=""):
     print(f"epoch = {epoch:6d}  elapsed = {self.__get_elapsed()}  loss = {loss:.4e}  error = {self.__get_error_u():.4e}  " + custom)
@@ -249,7 +246,7 @@ def plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exac
 
   ax = plt.subplot(gs1[0, 1])
   ax.plot(x, Exact_u[idx_t_1,:], 'b-', linewidth = 2, label = 'Exact') 
-  ax.plot(x_star, u_1_pred[:,-1], 'r--', linewidth = 2, label = 'Prediction')      
+  ax.plot(x_star, u_1_pred, 'r--', linewidth = 2, label = 'Prediction')      
   ax.set_xlabel('$x$')
   ax.set_ylabel('$u(t,x)$')    
   ax.set_title('$t = %.2f$' % (t[idx_t_1]), fontsize = 10)    
