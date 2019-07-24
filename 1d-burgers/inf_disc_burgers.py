@@ -25,7 +25,7 @@ q = 500
 layers = [1, 50, 50, 50, q + 1]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-epochs = 5000
+epochs = 500
 
 #%% DEFINING THE MODEL
 
@@ -53,11 +53,6 @@ class PhysicsInformedNN(object):
     self.optimizer = optimizer
     self.logger = logger
 
-  def fwd_gradients_0(self, U, x, tape):
-    # Two-step derivation, because U is a matrix
-    g = tape.gradient(U, x, output_gradients=self.dummy_x0_tf)
-    return tape.gradient(g, self.dummy_x0_tf)
-
   def U_0_model(self, x):
     # Using the new GradientTape paradigm of TF2.0,
     # which keeps track of operations to get the gradient at runtime
@@ -70,9 +65,14 @@ class PhysicsInformedNN(object):
       U_1 = self.U_1_model(x) # shape=(len(x), q+1)
       U = U_1[:, :-1] # shape=(len(x), q)
 
-      # Deriving INSIDE the tape
-      U_x = self.fwd_gradients_0(U, x, tape)
-      U_xx = self.fwd_gradients_0(U_x, x, tape)
+      # Deriving INSIDE the tape (2-step-dummy grad technique because U is a mat)
+      g_U = tape.gradient(U, x, output_gradients=self.dummy_x0_tf)
+      U_x = tape.gradient(g_U, self.dummy_x0_tf)
+      g_U_x = tape.gradient(U_x, x, output_gradients=self.dummy_x0_tf)
+    
+    # Doing the last one outside the with, to optimize performance
+    # Impossible to do for the earlier grad, because they’re needed after
+    U_xx = tape.gradient(g_U_x, self.dummy_x0_tf)
 
     # Letting the tape go
     del tape
@@ -85,11 +85,7 @@ class PhysicsInformedNN(object):
   # Defining custom loss
   def __loss(self, x_0, u_0):
     u_0_pred = self.U_0_model(self.x_0)
-    # u_0_pred = u_0_pred[:, 0:1]
     u_1_pred = self.U_1_model(self.x_1)
-
-    # print("SSEn", tf.reduce_sum(tf.square(u_0_pred - u_0)))
-    # print("SSEb", tf.reduce_sum(tf.square(u_1_pred)))
     return tf.reduce_sum(tf.square(u_0_pred - u_0)) + \
       tf.reduce_sum(tf.square(u_1_pred))
 
@@ -161,11 +157,6 @@ logger = Logger(x_star, u_star)
 
 # Creating the model and training
 pinn = PhysicsInformedNN(layers, optimizer, logger, dt, lb, ub, nu, q, IRK_weights, IRK_times)
-# for e in [30, 100, 300]:
-#   pinn.fit(x_0, u_0, x_1, x, x_star, Exact_u, e)
-#   u_1_pred = pinn.predict(x_star)
-#   plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
-# exit(0)
 pinn.fit(x_0, u_0, x_1, x, x_star, Exact_u, epochs)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
