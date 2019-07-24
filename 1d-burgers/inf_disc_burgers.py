@@ -11,11 +11,11 @@ np.random.seed(1234)
 # Same for tensorflow
 tf.random.set_seed(1234)
 
-#%% LOCAL IMPORTS
+#%% LOCAL IMPORTS
 sys.path.append("1d-burgers")
 from burgersutil import prep_data, Logger, plot_disc_results, appDataPath
 
-#%% HYPER PARAMETERS
+#%% HYPER PARAMETERS
 
 # Data size on initial condition on u
 N_n = 250
@@ -42,55 +42,54 @@ class PhysicsInformedNN(object):
     self.IRK_times = IRK_times
 
     # New descriptive Keras model [2, 50, …, 50, q+1]
-    self.u_1_model = tf.keras.Sequential()
-    self.u_1_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
+    self.U_1_model = tf.keras.Sequential()
+    self.U_1_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
     for width in layers[1:]:
-        self.u_1_model.add(tf.keras.layers.Dense(width,
+        self.U_1_model.add(tf.keras.layers.Dense(width,
           activation=tf.nn.tanh, kernel_initializer='glorot_normal'))
-    # print(self.u_1_model.summary())
 
     self.dtype = tf.float32
 
     self.optimizer = optimizer
     self.logger = logger
 
-  # The actual PINN
-  def u_0_model(self, x):
+  def fwd_gradients_0(self, U, x, tape):
+    # Two-step derivation, because U is a matrix
+    g = tape.gradient(U, x, output_gradients=self.dummy_x0_tf)
+    return tape.gradient(g, self.dummy_x0_tf)
+
+  def U_0_model(self, x):
     # Using the new GradientTape paradigm of TF2.0,
     # which keeps track of operations to get the gradient at runtime
     with tf.GradientTape(persistent=True) as tape:
       # Watching the two inputs we’ll need later, x and t
       tape.watch(x)
+      tape.watch(self.dummy_x0_tf)
 
-      # Getting the prediction
-      u_1 = self.u_1_model(x)
-      u = u_1[:, :-1]
-      # Deriving INSIDE the tape (since we’ll need the x derivative of this later, u_xx)
-      u_x = tape.gradient(u, x)
-    
-    # Getting the other derivatives
-    u_xx = tape.gradient(u_x, x)
+      # Getting the prediction, and removing the last item (q+1)
+      U_1 = self.U_1_model(x) # shape=(len(x), q+1)
+      U = U_1[:, :-1] # shape=(len(x), q)
+
+      # Deriving INSIDE the tape
+      U_x = self.fwd_gradients_0(U, x, tape)
+      U_xx = self.fwd_gradients_0(U_x, x, tape)
 
     # Letting the tape go
     del tape
 
+    # Buidling the PINNs, shape = (len(x), q+1), IRK shape = (q, q+1)
     nu = self.get_params(numpy=True)
-
-    f = u*u_x - nu*u_xx
-
-    # IRK_weights is (501, 500)
-    u_0 = u_1 + self.dt*tf.matmul(f, self.IRK_weights.T)
-
-    # Buidling the PINNs, shape = (len(x), 501)
-    return u_0
+    N = U*U_x - nu*U_xx # shape=(len(x), q)
+    return U_1 + self.dt*tf.matmul(N, self.IRK_weights.T)
 
   # Defining custom loss
   def __loss(self, x_0, u_0):
-    u_0_pred = self.u_0_model(self.x_0)
-    u_0_pred = u_0_pred[:, 0:1]
-    u_1_pred = self.u_1_model(self.x_1)
-    print("SSEn", tf.reduce_sum(tf.square(u_0_pred - u_0)))
-    print("SSEb", tf.reduce_sum(tf.square(u_1_pred)))
+    u_0_pred = self.U_0_model(self.x_0)
+    # u_0_pred = u_0_pred[:, 0:1]
+    u_1_pred = self.U_1_model(self.x_1)
+
+    # print("SSEn", tf.reduce_sum(tf.square(u_0_pred - u_0)))
+    # print("SSEb", tf.reduce_sum(tf.square(u_1_pred)))
     return tf.reduce_sum(tf.square(u_0_pred - u_0)) + \
       tf.reduce_sum(tf.square(u_1_pred))
 
@@ -100,7 +99,7 @@ class PhysicsInformedNN(object):
     return loss_value, tape.gradient(loss_value, self.__wrap_training_variables())
 
   def __wrap_training_variables(self):
-    var = self.u_1_model.trainable_variables
+    var = self.U_1_model.trainable_variables
     return var
 
   def get_params(self, numpy=False):
@@ -111,7 +110,7 @@ class PhysicsInformedNN(object):
     return np.linalg.norm(u_pred-u_star,2)/np.linalg.norm(u_star,2)
 
   def summary(self):
-    return self.u_1_model.summary()
+    return self.U_1_model.summary()
 
   # The training function
   def fit(self, x_0, u_0, x_1, x, x_star, Exact_u, epochs=1, log_epochs=50):
@@ -123,8 +122,8 @@ class PhysicsInformedNN(object):
     self.x_1 = tf.convert_to_tensor(x_1, dtype=self.dtype)
 
     # Creating dummy tensors for the gradients
-    self.dummy_x0_tf = np.ones((self.x_0.shape[0], self.q))
-    self.dummy_x1_tf = np.ones((self.x_1.shape[0], self.q+1))
+    self.dummy_x0_tf = tf.ones([self.x_0.shape[0], self.q], dtype=self.dtype)
+    self.dummy_x1_tf = tf.ones([self.x_1.shape[0], self.q+1], dtype=self.dtype)
 
     # Training loop
     for epoch in range(epochs):
@@ -140,7 +139,7 @@ class PhysicsInformedNN(object):
     self.logger.log_train_end(epochs)
 
   def predict(self, x_star):
-    u_star = self.u_1_model(x_star)[:, -1]
+    u_star = self.U_1_model(x_star)[:, -1]
     return u_star
 
 #%% TRAINING THE MODEL
@@ -172,5 +171,5 @@ pinn.fit(x_0, u_0, x_1, x, x_star, Exact_u, epochs)
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_1_pred = pinn.predict(x_star)
 
-#%% PLOTTING
+#%% PLOTTING
 plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
