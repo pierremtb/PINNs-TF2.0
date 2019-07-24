@@ -24,8 +24,8 @@ q = 500
 # DeepNN topology (1-sized input [x], 3 hidden layer of 50-width, q+1-sized output [u_1^n(x), ..., u_{q+1}^n(x)]
 layers = [1, 50, 50, 50, q + 1]
 # Creating the optimizer
-optimizer = tf.keras.optimizers.Adam(lr=0.001)
-epochs = 1000
+optimizer = tf.keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+epochs = 5000
 
 #%% DEFINING THE MODEL
 
@@ -45,7 +45,8 @@ class PhysicsInformedNN(object):
     self.u_1_model = tf.keras.Sequential()
     self.u_1_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
     for width in layers[1:]:
-        self.u_1_model.add(tf.keras.layers.Dense(width, activation=tf.nn.tanh, kernel_initializer='glorot_normal'))
+        self.u_1_model.add(tf.keras.layers.Dense(width,
+          activation=tf.nn.tanh, kernel_initializer='glorot_normal'))
     # print(self.u_1_model.summary())
 
     self.dtype = tf.float32
@@ -75,22 +76,27 @@ class PhysicsInformedNN(object):
 
     nu = self.get_params(numpy=True)
 
-    f = -u*u_x + nu*u_xx
+    f = u*u_x - nu*u_xx
 
-    u_0 = u_1 - self.dt*tf.matmul(f, self.IRK_weights.T)
+    # IRK_weights is (501, 500)
+    u_0 = u_1 + self.dt*tf.matmul(f, self.IRK_weights.T)
 
-    # Buidling the PINNs
+    # Buidling the PINNs, shape = (len(x), 501)
     return u_0
 
   # Defining custom loss
-  def __loss(self, u_0, u_0_pred):
+  def __loss(self, x_0, u_0):
+    u_0_pred = self.u_0_model(self.x_0)
+    u_0_pred = u_0_pred[:, 0:1]
     u_1_pred = self.u_1_model(self.x_1)
+    print("SSEn", tf.reduce_sum(tf.square(u_0_pred - u_0)))
+    print("SSEb", tf.reduce_sum(tf.square(u_1_pred)))
     return tf.reduce_sum(tf.square(u_0_pred - u_0)) + \
       tf.reduce_sum(tf.square(u_1_pred))
 
   def __grad(self, x_0, u_0):
     with tf.GradientTape() as tape:
-      loss_value = self.__loss(u_0, self.u_0_model(x_0))
+      loss_value = self.__loss(x_0, u_0)
     return loss_value, tape.gradient(loss_value, self.__wrap_training_variables())
 
   def __wrap_training_variables(self):
@@ -102,7 +108,7 @@ class PhysicsInformedNN(object):
 
   def error(self, x_star, u_star):
     u_pred = self.predict(x_star)
-    return np.linalg.norm(u_pred-u_star,2)/np.linalg.norm(u_pred,2)
+    return np.linalg.norm(u_pred-u_star,2)/np.linalg.norm(u_star,2)
 
   def summary(self):
     return self.u_1_model.summary()
@@ -156,6 +162,11 @@ logger = Logger(x_star, u_star)
 
 # Creating the model and training
 pinn = PhysicsInformedNN(layers, optimizer, logger, dt, lb, ub, nu, q, IRK_weights, IRK_times)
+# for e in [30, 100, 300]:
+#   pinn.fit(x_0, u_0, x_1, x, x_star, Exact_u, e)
+#   u_1_pred = pinn.predict(x_star)
+#   plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
+# exit(0)
 pinn.fit(x_0, u_0, x_1, x, x_star, Exact_u, epochs)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
