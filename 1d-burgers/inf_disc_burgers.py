@@ -25,7 +25,7 @@ q = 500
 layers = [1, 50, 50, 50, q + 1]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-epochs = 500
+epochs = 5000
 
 #%% DEFINING THE MODEL
 
@@ -119,7 +119,6 @@ class PhysicsInformedNN(object):
 
     # Creating dummy tensors for the gradients
     self.dummy_x0_tf = tf.ones([self.x_0.shape[0], self.q], dtype=self.dtype)
-    self.dummy_x1_tf = tf.ones([self.x_1.shape[0], self.q+1], dtype=self.dtype)
 
     # Training loop
     for epoch in range(epochs):
