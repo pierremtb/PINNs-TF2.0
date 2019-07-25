@@ -22,7 +22,7 @@ appDataPath = os.path.join(repoPath, "appendix", "Data")
 sys.path.insert(0, utilsPath)
 from plotting import newfig, savefig
 
-def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, noise=0.0, idx_t_0=None, idx_t_1=None):
+def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, noise=0.0, idx_t_0=None, idx_t_1=None, N_0=None, N_1=None):
     # Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
     data = scipy.io.loadmat(path)
 
@@ -35,7 +35,6 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
 
     if N_n != None and q != None and ub != None and lb != None and idx_t_0 != None and idx_t_1 != None:
       dt = t[idx_t_1] - t[idx_t_0]
-      
       idx_x = np.random.choice(Exact_u.shape[1], N_n, replace=False) 
       x_0 = x[idx_x,:]
       u_0 = Exact_u[idx_t_0:idx_t_0+1,idx_x].T
@@ -68,6 +67,28 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
     idx = np.random.choice(X_star.shape[0], N_u, replace=False)
     X_u_train = X_star[idx,:]
     u_train = u_star[idx,:]
+
+    if N_0 != None and N_1 != None:
+      Exact_u = Exact_u.T
+      idx_x = np.random.choice(Exact_u.shape[0], N_0, replace=False)
+      x_0 = x[idx_x,:]
+      u_0 = Exact_u[idx_x,idx_t_0][:,None]
+      u_0 = u_0 + noise*np.std(u_0)*np.random.randn(u_0.shape[0], u_0.shape[1])
+          
+      idx_x = np.random.choice(Exact_u.shape[0], N_1, replace=False)
+      x_1 = x[idx_x,:]
+      u_1 = Exact_u[idx_x,idx_t_1][:,None]
+      u_1 = u_1 + noise*np.std(u_1)*np.random.randn(u_1.shape[0], u_1.shape[1])
+      
+      dt = np.asscalar(t[idx_t_1] - t[idx_t_0])        
+      q = int(np.ceil(0.5*np.log(np.finfo(float).eps)/np.log(dt)))
+
+      # Load IRK weights
+      tmp = np.float32(np.loadtxt(os.path.join(utilsPath, "IRK_weights", "Butcher_IRK%d.txt" % (q)), ndmin = 2))
+      weights =  np.reshape(tmp[0:q**2+q], (q+1,q))     
+      IRK_alpha = weights[0:-1,:]
+      IRK_beta = weights[-1:,:] 
+      return x_0, u_0, x_1, u_1, dt, q, Exact_u, IRK_alpha, IRK_beta
 
     if N_f == None:
         return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train

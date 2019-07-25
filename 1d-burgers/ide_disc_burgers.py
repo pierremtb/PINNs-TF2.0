@@ -18,11 +18,10 @@ from burgersutil import prep_data, Logger, plot_disc_results, appDataPath
 #%% HYPER PARAMETERS
 
 # Data size on initial condition on u
-N_n = 250
-# Number of RK stages
-q = 500
-# DeepNN topology (1-sized input [x], 3 hidden layer of 50-width, q+1-sized output [u_1^n(x), ..., u_{q+1}^n(x)]
-layers = [1, 50, 50, 50, q + 1]
+N_0 = 199
+N_1 = 201
+# DeepNN topology (1-sized input [x], 3 hidden layer of 50-width, q-sized output defined later [u_1^n(x), ..., u_{q+1}^n(x)]
+layers = [1, 50, 50, 50, 0]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
 epochs = 5000
@@ -30,16 +29,15 @@ epochs = 5000
 #%% DEFINING THE MODEL
 
 class PhysicsInformedNN(object):
-  def __init__(self, layers, optimizer, logger, dt, lb, ub, nu, q, IRK_weights, IRK_times):
+  def __init__(self, layers, optimizer, logger, dt, lb, ub, q, IRK_alpha, IRK_beta):
     self.lb = lb
     self.ub = ub
-    self.nu = nu
 
     self.dt = dt
 
     self.q = max(q,1)
-    self.IRK_weights = IRK_weights
-    self.IRK_times = IRK_times
+    self.IRK_alpha = IRK_alpha
+    self.IRK_beta = IRK_beta
 
     # New descriptive Keras model [2, 50, …, 50, q+1]
     self.U_model = tf.keras.Sequential()
@@ -108,7 +106,7 @@ class PhysicsInformedNN(object):
     # Buidling the PINNs, shape = (len(x), q+1), IRK shape = (q, q+1)
     l1 = self.lambda_1
     l2 = tf.exp(self.lambda_2)
-    N = l1*U*U_x - l2U_xx # shape=(len(x), q)
+    N = l1*U*U_x - l2*U_xx # shape=(len(x), q)
     return U + self.dt*tf.matmul(N, self.IRK_alpha.T)
 
   def U_0_model(self, x):
@@ -136,8 +134,8 @@ class PhysicsInformedNN(object):
 
     # Buidling the PINNs, shape = (len(x), q+1), IRK shape = (q, q+1)
     l1 = self.lambda_1
-    l2 = self.lambda_2
-    N = l1*U*U_x - l2U_xx # shape=(len(x), q)
+    l2 = tf.exp(self.lambda_2)
+    N = l1*U*U_x - l2*U_xx # shape=(len(x), q)
     return U + self.dt*tf.matmul(N, self.IRK_alpha.T)
 
   # Defining custom loss
@@ -157,17 +155,22 @@ class PhysicsInformedNN(object):
     return var
 
   def get_params(self, numpy=False):
-    return self.nu
+    l1 = self.lambda_1
+    l2 = tf.exp(self.lambda_2)
+    if numpy:
+      return l1.numpy()[0], l2.numpy()[0]
+    return l1, l2
 
   def error(self, x_star, u_star):
-    u_pred = self.predict(x_star)
-    return np.linalg.norm(u_pred-u_star,2)/np.linalg.norm(u_star,2)
+    # u_pred = self.predict(x_star)
+    # return np.linalg.norm(u_pred-u_star,2)/np.linalg.norm(u_star,2)
+    return 0.0
 
   def summary(self):
     return self.U_model.summary()
 
   # The training function
-  def fit(self, x_0, u_0, x_1, u_1, x, x_star, Exact_u, epochs=1, log_epochs=50):
+  def fit(self, x_0, u_0, x_1, u_1, epochs=1, log_epochs=50):
     self.logger.log_train_start(self)
 
     # Creating the tensors
@@ -192,7 +195,9 @@ class PhysicsInformedNN(object):
 
       # Logging every so often
       if epoch % log_epochs == 0:
-        self.logger.log_train_epoch(epoch, loss_value)
+        l1, l2 = self.get_params(numpy=True)
+        custom = f"l1 = {l1:5f}  l2 = {l2:8f}"
+        self.logger.log_train_epoch(epoch, loss_value, custom)
     
     self.logger.log_train_end(epochs)
 
@@ -206,23 +211,24 @@ class PhysicsInformedNN(object):
 lb = np.array([-1.0])
 ub = np.array([1.0])
 idx_t_0 = 10
-idx_t_1 = 90
-nu = 0.01/np.pi
+skip = 80
+idx_t_1 = idx_t_0 + skip
 
 # Getting the data
 path = os.path.join(appDataPath, "burgers_shock.mat")
-x, t, dt, \
-  Exact_u, x_0, u_0, x_1, x_star, u_star, \
-  IRK_weights, IRK_times = prep_data(path, N_n=N_n, q=q, lb=lb, ub=ub, noise=0.0, idx_t_0=idx_t_0, idx_t_1=idx_t_1)
+x_0, u_0, x_1, u_1, dt, q, \
+  Exact_u, IRK_alpha, IRK_beta = prep_data(path, N_0=N_0, N_1=N_1, lb=lb, ub=ub, noise=0.0, idx_t_0=idx_t_0, idx_t_1=idx_t_1)
 
-logger = Logger(x_star, u_star)
+layers[-1] = q
+
+logger = Logger(1.0, 0.01/np.pi)
 
 # Creating the model and training
-pinn = PhysicsInformedNN(layers, optimizer, logger, dt, lb, ub, nu, q, IRK_weights, IRK_times)
-pinn.fit(x_0, u_0, x_1, x, x_star, Exact_u, epochs)
+pinn = PhysicsInformedNN(layers, optimizer, logger, dt, lb, ub, q, IRK_alpha, IRK_beta)
+pinn.fit(x_0, u_0, x_1, epochs)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
-u_1_pred = pinn.predict(x_star)
+#u_1_pred = pinn.predict(x_star)
 
 #%% PLOTTING
-plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
+#plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
