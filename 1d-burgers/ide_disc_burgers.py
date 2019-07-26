@@ -24,7 +24,7 @@ N_1 = 201
 layers = [1, 50, 50, 50, 0]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-epochs = 1000
+epochs = 100
 
 #%% DEFINING THE MODEL
 
@@ -75,9 +75,14 @@ class PhysicsInformedNN(object):
     del tape
     return U_x, U_xx
 
-  def U_0_model(self, x):
+  def U_0_model(self, x, customDummy=None):
     U = self.U_model(x)
-    U_x, U_xx = self.__autograd(U, x, self.dummy_x_0)
+    #dummy = customDummy or self.dummy_x_0
+    if customDummy != None:
+      dummy = customDummy
+    else:
+      dummy = self.dummy_x_0
+    U_x, U_xx = self.__autograd(U, x, dummy)
 
     # Buidling the PINNs
     l1 = self.lambda_1
@@ -85,9 +90,14 @@ class PhysicsInformedNN(object):
     N = l1*U*U_x - l2*U_xx # shape=(len(x), q)
     return U + self.dt*tf.matmul(N, self.IRK_alpha.T)
 
-  def U_1_model(self, x):
+  def U_1_model(self, x, customDummy=None):
     U = self.U_model(x)
-    U_x, U_xx = self.__autograd(U, x, self.dummy_x_1)
+    #dummy = customDummy or self.dummy_x_1
+    if customDummy != None:
+      dummy = customDummy
+    else:
+      dummy = self.dummy_x_1
+    U_x, U_xx = self.__autograd(U, x, dummy)
 
     # Buidling the PINNs, shape = (len(x), q+1), IRK shape = (q, q+1)
     l1 = self.lambda_1
@@ -98,7 +108,6 @@ class PhysicsInformedNN(object):
   # Defining custom loss
   def __loss(self, x_0, u_0, x_1, u_1):
     u_0_pred = self.U_0_model(x_0)
-    u_1_pred = 0.0
     u_1_pred = self.U_1_model(x_1)
     return tf.reduce_sum(tf.square(u_0_pred - u_0)) + \
       tf.reduce_sum(tf.square(u_1_pred - u_1))
@@ -129,6 +138,9 @@ class PhysicsInformedNN(object):
   def summary(self):
     return self.U_model.summary()
 
+  def __createDummy(self, x):
+    return tf.ones([x.shape[0], self.q], dtype=self.dtype)
+
   # The training function
   def fit(self, x_0, u_0, x_1, u_1, epochs=1, log_epochs=50):
     self.logger.log_train_start(self)
@@ -143,8 +155,8 @@ class PhysicsInformedNN(object):
     self.lambda_2 = tf.Variable([-6.0], dtype=self.dtype)
 
     # Creating dummy tensors for the gradients
-    self.dummy_x_0 = tf.ones([x_0.shape[0], self.q], dtype=self.dtype)
-    self.dummy_x_1 = tf.ones([x_1.shape[0], self.q], dtype=self.dtype)
+    self.dummy_x_0 = self.__createDummy(x_0)
+    self.dummy_x_1 = self.__createDummy(x_1)
 
     # Training loop
     for epoch in range(epochs):
@@ -162,8 +174,10 @@ class PhysicsInformedNN(object):
     self.logger.log_train_end(epochs)
 
   def predict(self, x_star):
-    U_0_star = self.U_0_model(x_star)
-    U_1_star = self.U_1_model(x_star)
+    x_star = tf.convert_to_tensor(x_star, dtype=self.dtype)
+    dummy = self.__createDummy(x_star)
+    U_0_star = self.U_0_model(x_star, dummy)
+    U_1_star = self.U_1_model(x_star, dummy)
     return U_0_star, U_1_star
 
 #%% TRAINING THE MODEL
@@ -191,6 +205,8 @@ pinn.fit(x_0, u_0, x_1, u_1, epochs)
 # Getting the model predictions
 U_0_pred, U_1_pred = pinn.predict(x_star)
 lambda_1_pred, lambda_2_pred = pinn.get_params(numpy=True)
+print("l1: ", lambda_1_pred)
+print("l2: ", lambda_2_pred)
 
 #%% PLOTTING
 #plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
