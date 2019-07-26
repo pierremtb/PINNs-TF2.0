@@ -88,7 +88,8 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
       weights =  np.reshape(tmp[0:q**2+q], (q+1,q))     
       IRK_alpha = weights[0:-1,:]
       IRK_beta = weights[-1:,:] 
-      return x_0, u_0, x_1, u_1, dt, q, Exact_u, IRK_alpha, IRK_beta
+      print("FOO")
+      return x_0, u_0, x_1, u_1, x, dt, q, Exact_u, IRK_alpha, IRK_beta
 
     if N_f == None:
         return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train
