@@ -12,7 +12,7 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 
-from burgersutil import prep_data, Logger, plot_cont_results, appDataPath
+from burgersutil import prep_data, Logger, plot_ide_cont_results, appDataPath
 
 #%% HYPER PARAMETERS
 
@@ -22,7 +22,7 @@ N_u = 2000
 layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-epochs = 5000
+epochs = 1000
 
 #%% DEFINING THE MODEL
 
@@ -140,8 +140,15 @@ pinn.fit(X_u_train, u_train, epochs)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, f_pred = pinn.predict(X_star)
+lambda_1_pred, lambda_2_pred = pinn.get_params(numpy=True)
+print("l1: ", lambda_1_pred)
+print("l2: ", lambda_2_pred)
+
+lambda_1_pred_noise = 0.0
+lambda_2_pred_noise = 0.0
+
 
 #%% PLOTTING
 
-plot_cont_results(X_star, u_pred.numpy().flatten(), X_u_train, u_train,
-  Exact_u, X, T, x, t)
+plot_ide_cont_results(X_star, u_pred.numpy().flatten(), X_u_train, u_train,
+  Exact_u, X, T, x, t, lambda_1_pred, lambda_1_pred_noise, lambda_2_pred, lambda_2_pred_noise)

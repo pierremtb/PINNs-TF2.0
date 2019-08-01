@@ -13,7 +13,7 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 sys.path.append("1d-burgers")
-from burgersutil import prep_data, Logger, plot_disc_results, appDataPath
+from burgersutil import prep_data, Logger, plot_ide_disc_results, appDataPath
 
 #%% HYPER PARAMETERS
 
@@ -24,7 +24,7 @@ N_1 = 201
 layers = [1, 50, 50, 50, 0]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-epochs = 100
+epochs = 1000
 
 #%% DEFINING THE MODEL
 
@@ -130,10 +130,11 @@ class PhysicsInformedNN(object):
     return l1, l2
 
   def error(self, x_star, u_star):
-    error_lambda_1 = np.abs(x_star - 1.0)/1.0 *100
+    l1, l2 = self.get_params(numpy=True)
+    error_lambda_1 = np.abs(l1 - 1.0)/1.0 *100
     nu = 0.01 / np.pi
-    error_lambda_2 = np.abs(u_star - nu)/nu * 100
-    return error_lambda_1
+    error_lambda_2 = np.abs(l2 - nu)/nu * 100
+    return (error_lambda_1 + error_lambda_2) / 2
 
   def summary(self):
     return self.U_model.summary()
@@ -191,7 +192,7 @@ idx_t_1 = idx_t_0 + skip
 
 # Getting the data
 path = os.path.join(appDataPath, "burgers_shock.mat")
-x_0, u_0, x_1, u_1, x_star, dt, q, \
+x_0, u_0, x_1, u_1, x_star, t_star, dt, q, \
   Exact_u, IRK_alpha, IRK_beta = prep_data(path, N_0=N_0, N_1=N_1, lb=lb, ub=ub, noise=0.0, idx_t_0=idx_t_0, idx_t_1=idx_t_1)
 
 layers[-1] = q
@@ -208,5 +209,26 @@ lambda_1_pred, lambda_2_pred = pinn.get_params(numpy=True)
 print("l1: ", lambda_1_pred)
 print("l2: ", lambda_2_pred)
 
+# Noisy case
+x_0, u_0, x_1, u_1, x_star, t_star, dt, q, \
+  Exact_u, IRK_alpha, IRK_beta = prep_data(path, N_0=N_0, N_1=N_1, lb=lb, ub=ub, noise=0.01, idx_t_0=idx_t_0, idx_t_1=idx_t_1)
+
+layers[-1] = q
+
+logger = Logger(1.0, 0.01/np.pi)
+
+# Creating the model and training
+pinn = PhysicsInformedNN(layers, optimizer, logger, dt, lb, ub, q, IRK_alpha, IRK_beta)
+pinn.fit(x_0, u_0, x_1, u_1, epochs)
+
+# Getting the model predictions
+U_0_pred, U_1_pred = pinn.predict(x_star)
+lambda_1_pred_noisy, lambda_2_pred_noisy = pinn.get_params(numpy=True)
+print("l1: ", lambda_1_pred)
+print("l2: ", lambda_2_pred)
+print("noisy l1: ", lambda_1_pred_noisy)
+print("noisy l2: ", lambda_2_pred_noisy)
+
 #%% PLOTTING
-#plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
+plot_ide_disc_results(x_star, t_star, idx_t_0, idx_t_1, x_0, u_0, x_1, u_1,
+  ub, lb, U_1_pred, Exact_u, lambda_1_pred, lambda_1_pred_noisy, lambda_2_pred, lambda_2_pred_noisy, x_star, t_star)
