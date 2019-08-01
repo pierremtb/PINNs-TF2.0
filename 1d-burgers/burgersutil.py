@@ -88,7 +88,6 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
       weights =  np.reshape(tmp[0:q**2+q], (q+1,q))     
       IRK_alpha = weights[0:-1,:]
       IRK_beta = weights[-1:,:] 
-      print("FOO")
       return x_0, u_0, x_1, u_1, x, t, dt, q, Exact_u, IRK_alpha, IRK_beta
 
     if N_f == None:
@@ -335,14 +334,16 @@ def plot_ide_disc_results(x_star, t_star, idx_t_0, idx_t_1, x_0, u_0, x_1, u_1,
   s3 = r'Identified PDE (1\% noise) & '
   s4 = r'$u_t + %.3f u u_x + %.6f u_{xx} = 0$  \\  \hline ' % (lambda_1_value_noisy, lambda_2_value_noisy)
   s5 = r'\end{tabular}$'
-  s = s1+s2+s3+s5
+  s = s1+s2+s3+s4+s5
   ax.text(-0.1,0.2,s)
   plt.show()
 
-def plot_ide_cont_results(X_star, U_pred, X_u_train, u_train,
+def plot_ide_cont_results(X_star, u_pred, X_u_train, u_train,
   Exact_u, X, T, x, t, lambda_1_value, lambda_1_value_noisy, lambda_2_value, lambda_2_value_noisy):
     fig, ax = newfig(1.0, 1.4)
     ax.axis('off')
+
+    U_pred = griddata(X_star, u_pred.flatten(), (X, T), method='cubic')
     
     ####### Row 0: u(t,x) ##################    
     gs0 = gridspec.GridSpec(1, 2)
@@ -373,7 +374,7 @@ def plot_ide_cont_results(X_star, U_pred, X_u_train, u_train,
     gs1.update(top=1-1.0/3.0-0.1, bottom=1.0-2.0/3.0, left=0.1, right=0.9, wspace=0.5)
     
     ax = plt.subplot(gs1[0, 0])
-    ax.plot(x,Exact_u[25,:], 'b-', linewidth = 2, label = 'Exact')       
+    ax.plot(x,Exact_u[25,:], 'b-', linewidth = 2, label = 'Exact')
     ax.plot(x,U_pred[25,:], 'r--', linewidth = 2, label = 'Prediction')
     ax.set_xlabel('$x$')
     ax.set_ylabel('$u(t,x)$')    
@@ -417,4 +418,4 @@ def plot_ide_cont_results(X_star, U_pred, X_u_train, u_train,
     s = s1+s2+s3+s4+s5
     ax.text(0.1,0.1,s)
     plt.show()
-    # savefig('./figures/Burgers_identification')  
+    # savefig('./figures/Burgers_identification')

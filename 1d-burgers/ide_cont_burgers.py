@@ -22,7 +22,7 @@ N_u = 2000
 layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
 # Creating the optimizer
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-epochs = 1000
+epochs = 5000
 
 #%% DEFINING THE MODEL
 
@@ -95,9 +95,19 @@ class PhysicsInformedNN(object):
       return l1.numpy()[0], l2.numpy()[0]
     return l1, l2
 
+  def error(self, x_star, u_star):
+    l1, l2 = self.get_params(numpy=True)
+    error_lambda_1 = np.abs(l1 - 1.0)/1.0 *100
+    nu = 0.01 / np.pi
+    error_lambda_2 = np.abs(l2 - nu)/nu * 100
+    return (error_lambda_1 + error_lambda_2) / 2
+
+  def summary(self):
+    return self.u_model.summary()
+
   # The training function
   def fit(self, X_u, u, epochs=1, log_epochs=50):
-    self.logger.log_train_start(self.u_model)
+    self.logger.log_train_start(self)
 
     # Creating the tensors
     self.X_u = tf.convert_to_tensor(X_u, dtype=self.dtype)
@@ -123,7 +133,7 @@ class PhysicsInformedNN(object):
   def predict(self, X_star):
     u_star = self.u_model(X_star)
     f_star = self.__f_model()
-    return u_star, f_star
+    return u_star.numpy(), f_star.numpy()
 
 #%% TRAINING THE MODEL
 
@@ -144,11 +154,17 @@ lambda_1_pred, lambda_2_pred = pinn.get_params(numpy=True)
 print("l1: ", lambda_1_pred)
 print("l2: ", lambda_2_pred)
 
-lambda_1_pred_noise = 0.0
-lambda_2_pred_noise = 0.0
+# Noise case
+x, t, X, T, Exact_u, X_star, u_star, \
+  X_u_train, u_train = prep_data(path, N_u, noise=0.01)
+logger = Logger(X_star, u_star)
+pinn = PhysicsInformedNN(layers, optimizer, logger)
+pinn.fit(X_u_train, u_train, epochs)
+lambda_1_pred_noise, lambda_2_pred_noise = pinn.get_params(numpy=True)
+print("l1_noise: ", lambda_1_pred_noise)
+print("l2_noise: ", lambda_2_pred_noise)
 
 
 #%% PLOTTING
-
-plot_ide_cont_results(X_star, u_pred.numpy().flatten(), X_u_train, u_train,
+plot_ide_cont_results(X_star, u_pred, X_u_train, u_train,
   Exact_u, X, T, x, t, lambda_1_pred, lambda_1_pred_noise, lambda_2_pred, lambda_2_pred_noise)
