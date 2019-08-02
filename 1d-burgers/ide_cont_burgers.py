@@ -151,8 +151,6 @@ pinn.fit(X_u_train, u_train, epochs)
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, f_pred = pinn.predict(X_star)
 lambda_1_pred, lambda_2_pred = pinn.get_params(numpy=True)
-print("l1: ", lambda_1_pred)
-print("l2: ", lambda_2_pred)
 
 # Noise case
 x, t, X, T, Exact_u, X_star, u_star, \
@@ -161,6 +159,9 @@ logger = Logger(X_star, u_star)
 pinn = PhysicsInformedNN(layers, optimizer, logger)
 pinn.fit(X_u_train, u_train, epochs)
 lambda_1_pred_noise, lambda_2_pred_noise = pinn.get_params(numpy=True)
+
+print("l1: ", lambda_1_pred)
+print("l2: ", lambda_2_pred)
 print("l1_noise: ", lambda_1_pred_noise)
 print("l2_noise: ", lambda_2_pred_noise)
 

@@ -13,7 +13,7 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 sys.path.append("1d-burgers")
-from burgersutil import prep_data, Logger, plot_disc_results, appDataPath
+from burgersutil import prep_data, Logger, plot_inf_disc_results, appDataPath
 
 #%% HYPER PARAMETERS
 
@@ -162,4 +162,4 @@ pinn.fit(x_0, u_0, x_1, x, x_star, Exact_u, epochs)
 u_1_pred = pinn.predict(x_star)
 
 #%% PLOTTING
-plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)
+plot_inf_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t)

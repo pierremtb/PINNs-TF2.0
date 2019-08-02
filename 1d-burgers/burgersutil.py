@@ -120,7 +120,7 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
     # Getting the corresponding u_train
     u_train = u_train [idx,:]
 
-    return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train
+    return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train, ub, lb
 
 class Logger(object):
   def __init__(self, X_star, u_star):
@@ -151,7 +151,7 @@ class Logger(object):
     print("==================")
     print(f"Training finished (epoch {epoch}): duration = {self.__get_elapsed()}  error = {self.__get_error_u():.4e}  " + custom)
 
-def plot_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, file=None):
+def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, file=None):
 
   # Interpolating the results on the whole (x,t) domain.
   # griddata(points, values, points at which to interpolate, method)
@@ -225,7 +225,7 @@ def plot_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, f
   if file != None:
     savefig(file)
 
-def plot_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t, file=None):
+def plot_inf_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t, file=None):
   fig, ax = newfig(1.0, 1.2)
   ax.axis('off')
   
