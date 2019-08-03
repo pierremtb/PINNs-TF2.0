@@ -12,7 +12,7 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 
-from newopt import lbfgs, Struct
+from custom_lbfgs import lbfgs, Struct
 from burgersutil import prep_data, Logger, plot_inf_cont_results, appDataPath
 
 #%% HYPER PARAMETERS
@@ -23,16 +23,16 @@ N_u = 50
 N_f = 10000
 # DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
 layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
-# Setting up the tf optimizer (set tf_epochs=0 to cancel it)
+# Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
+tf_epochs = 0
 tf_optimizer = tf.keras.optimizers.Adam(
-  learning_rate=0.15,
+  learning_rate=0.1,
   beta_1=0.99,
   epsilon=1e-1)
-tf_epochs = 0
 # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-nt_epochs = 300
+nt_epochs = 100
 nt_config = Struct()
-nt_config.learningRate = 1
+nt_config.learningRate = 0.8
 nt_config.maxIter = nt_epochs
 nt_config.nCorrection = 50
 nt_config.tolFun = 1.0 * np.finfo(float).eps
@@ -48,8 +48,7 @@ class PhysicsInformedNN(object):
     for width in layers[1:]:
         self.u_model.add(tf.keras.layers.Dense(width, activation=tf.nn.tanh))
 
-    # self.sizes_w = [40, 400, 400, 400, 400, 400, 400, 400, 20]
-    # self.sizes_b = [20, 20, 20, 20, 20, 20, 20, 20, 1]
+    # Computing the sizes of weights/biases for future decomposition
     self.sizes_w = []
     self.sizes_b = []
     for i, width in enumerate(layers):
@@ -57,11 +56,39 @@ class PhysicsInformedNN(object):
         self.sizes_w.append(int(width * layers[1]))
         self.sizes_b.append(int(width if i != 0 else layers[1]))
 
-    self.dtype = tf.float32
-
     self.nu = nu
     self.optimizer = optimizer
     self.logger = logger
+
+    self.dtype = tf.float32
+    
+  # Defining custom loss
+  def __loss(self, u, u_pred):
+    f_pred = self.f_model()
+    return tf.reduce_mean(tf.square(u - u_pred)) + \
+      tf.reduce_mean(tf.square(f_pred))
+
+  def __grad(self, X, u):
+    with tf.GradientTape() as tape:
+      loss_value = self.__loss(u, self.u_model(X))
+    return loss_value, tape.gradient(loss_value, self.__wrap_training_variables())
+
+  def __wrap_training_variables(self):
+    var = self.u_model.trainable_variables
+    return var
+
+  def __loss_and_flat_grad(self, w):
+    with tf.GradientTape() as tape:
+      self.set_weights(w)
+      loss_value = self.__loss(self.u, self.u_model(self.X_u))
+    grad = tape.gradient(loss_value, self.u_model.trainable_variables)
+    return loss_value, self.__flatten_grad(grad)
+
+  def __flatten_grad(self, grad):
+    grad_flat = []
+    for g in grad:
+      grad_flat.append(tf.reshape(g, [-1]))
+    return tf.concat(grad_flat, 0)
 
   # The actual PINN
   def f_model(self):
@@ -91,21 +118,6 @@ class PhysicsInformedNN(object):
 
     # Buidling the PINNs
     return u_t + u*u_x - nu*u_xx
-
-  # Defining custom loss
-  def __loss(self, u, u_pred):
-    f_pred = self.f_model()
-    return tf.reduce_mean(tf.square(u - u_pred)) + \
-      tf.reduce_mean(tf.square(f_pred))
-
-  def __grad(self, X, u):
-    with tf.GradientTape() as tape:
-      loss_value = self.__loss(u, self.u_model(X))
-    return loss_value, tape.gradient(loss_value, self.__wrap_training_variables())
-
-  def __wrap_training_variables(self):
-    var = self.u_model.trainable_variables
-    return var
 
   def get_params(self, numpy=False):
     return self.nu
@@ -149,42 +161,30 @@ class PhysicsInformedNN(object):
     self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
     self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=self.dtype)
 
+    self.logger.log_train_opt("Adam")
     # Training loop
     for epoch in range(tf_epochs):
       # Optimization step
       loss_value, grads = self.__grad(self.X_u, self.u)
       self.optimizer.apply_gradients(zip(grads, self.__wrap_training_variables()))
-
-      # Logging every so often
-      if epoch % 1 == 0:
-        self.logger.log_train_epoch(epoch, loss_value)
+      self.logger.log_train_epoch(epoch, loss_value)
     
-    self.logger.log_train_sep()
-
-    def opfunc(x):
-      with tf.GradientTape(persistent=True) as tape:
-        tape.watch(x)
-        tape.watch(self.u_model.trainable_variables)
-        self.set_weights(x)
-        loss_value = self.__loss(self.u, self.u_model(X_u))
-      grad = tape.gradient(loss_value, self.u_model.trainable_variables)
-      del tape
-      grad_flat = []
-      for g in grad:
-        grad_flat.append(tf.reshape(g, [-1]))
-      grad_flat = tf.concat(grad_flat, 0)
-      return loss_value, grad_flat
+    self.logger.log_train_opt("LBFGS")
 
     # tfp.optimizer.lbfgs_minimize(
-    #   opfunc, initial_position=self.get_weights(), num_correction_pairs=50,
-    #   max_iterations=500,
-    #   parallel_iterations=6,
-    #   f_relative_tolerance=1.0 * np.finfo(float).eps,
-    #   tolerance=1.0 * np.finfo(float).eps)
+    #   self.loss_and_flat_grad_function,
+    #   initial_position=self.get_weights(),
+    #   num_correction_pairs=nt_config.nCorrection,
+    #   max_iterations=nt_config.maxIter,
+    #   f_relative_tolerance=nt_config.tolFun,
+    #   tolerance=nt_config.tolFun,
+    #   parallel_iterations=6)
 
-    lbfgs(opfunc, self.get_weights(), nt_config, Struct(), True, logger)
+    lbfgs(self.__loss_and_flat_grad,
+      self.get_weights(),
+      nt_config, Struct(), True, logger)
 
-    self.logger.log_train_end(tf_epochs)
+    self.logger.log_train_end(tf_epochs + nt_config.maxIter)
 
   def predict(self, X_star):
     u_star = self.u_model(X_star)
@@ -198,7 +198,7 @@ path = os.path.join(appDataPath, "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, \
   X_u_train, u_train, X_f_train, ub, lb = prep_data(path, N_u, N_f, noise=0.0)
 
-logger = Logger(X_star, u_star)
+logger = Logger(X_star, u_star, frequency=10)
 
 # Creating the model and training
 pinn = PhysicsInformedNN(layers, tf_optimizer, logger, ub, lb, nu=0.01/np.pi)

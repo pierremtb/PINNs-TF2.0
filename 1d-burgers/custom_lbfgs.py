@@ -1,3 +1,5 @@
+# Adapted from https://github.com/yaroslavvb/stuff/blob/master/eager_lbfgs/eager_lbfgs.py
+
 import tensorflow as tf
 import numpy as np
 import time
@@ -21,7 +23,7 @@ def last_time():
   """Returns last interval records in millis."""
   global global_last_time, global_time_list
   if global_time_list:
-    return 1000*global_time_list[-1]
+    return 1000 * global_time_list[-1]
   else:
     return 0
 
@@ -38,9 +40,12 @@ def lbfgs(opfunc, x, config, state, do_verbose, logger):
   """port of lbfgs.lua, using TensorFlow eager mode.
   """
 
+  if config.maxIter == 0:
+    return
+
   global final_loss, times
   
-  maxIter = config.maxIter or 20
+  maxIter = config.maxIter
   maxEval = config.maxEval or maxIter*1.25
   tolFun = config.tolFun or 1e-5
   tolX = config.tolX or 1e-19
