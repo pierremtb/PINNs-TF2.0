@@ -30,7 +30,7 @@ tf_optimizer = tf.keras.optimizers.Adam(
   beta_1=0.99,
   epsilon=1e-1)
 # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-nt_epochs = 100
+nt_epochs = 2000
 nt_config = Struct()
 nt_config.learningRate = 0.8
 nt_config.maxIter = nt_epochs
@@ -41,7 +41,7 @@ nt_config.tolFun = 1.0 * np.finfo(float).eps
 
 class PhysicsInformedNN(object):
   def __init__(self, layers, optimizer, logger, ub, lb, nu):
-    # New descriptive Keras model [2, 20, …, 20, 1]
+    # Descriptive Keras model [2, 20, …, 20, 1]
     self.u_model = tf.keras.Sequential()
     self.u_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
     self.u_model.add(tf.keras.layers.Lambda(lambda X: 2.0*(X - lb)/(ub - lb) - 1.0))
@@ -100,7 +100,6 @@ class PhysicsInformedNN(object):
       tape.watch(self.t_f)
       # Packing together the inputs
       X_f = tf.stack([self.x_f[:,0], self.t_f[:,0]], axis=1)
-
 
       # Getting the prediction
       u = self.u_model(X_f)
@@ -170,7 +169,6 @@ class PhysicsInformedNN(object):
       self.logger.log_train_epoch(epoch, loss_value)
     
     self.logger.log_train_opt("LBFGS")
-
     # tfp.optimizer.lbfgs_minimize(
     #   self.loss_and_flat_grad_function,
     #   initial_position=self.get_weights(),
@@ -179,7 +177,6 @@ class PhysicsInformedNN(object):
     #   f_relative_tolerance=nt_config.tolFun,
     #   tolerance=nt_config.tolFun,
     #   parallel_iterations=6)
-
     lbfgs(self.__loss_and_flat_grad,
       self.get_weights(),
       nt_config, Struct(), True, logger)
@@ -198,9 +195,8 @@ path = os.path.join(appDataPath, "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, \
   X_u_train, u_train, X_f_train, ub, lb = prep_data(path, N_u, N_f, noise=0.0)
 
-logger = Logger(X_star, u_star, frequency=10)
-
 # Creating the model and training
+logger = Logger(X_star, u_star, frequency=10)
 pinn = PhysicsInformedNN(layers, tf_optimizer, logger, ub, lb, nu=0.01/np.pi)
 pinn.fit(X_u_train, u_train, X_f_train, tf_epochs, nt_config)
 

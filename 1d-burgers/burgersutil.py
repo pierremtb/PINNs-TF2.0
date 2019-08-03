@@ -137,6 +137,7 @@ class Logger(object):
     return datetime.fromtimestamp(time.time() - self.start_time).strftime("%M:%S")
 
   def __get_error_u(self):
+    return 0.0
     return self.model.error(self.X_star, self.u_star)
   
   def log_train_start(self, model):
