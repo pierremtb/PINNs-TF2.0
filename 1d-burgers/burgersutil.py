@@ -91,7 +91,9 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
       return x_0, u_0, x_1, u_1, x, t, dt, q, Exact_u, IRK_alpha, IRK_beta
 
     if N_f == None:
-        return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train
+      lb = X_star.min(axis=0)
+      ub = X_star.max(axis=0) 
+      return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, ub, lb
 
     # Domain bounds (lowerbounds upperbounds) [x, t], which are here ([-1.0, 0.0] and [1.0, 1.0])
     lb = X_star.min(axis=0)
@@ -123,13 +125,11 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
     return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train, ub, lb
 
 class Logger(object):
-  def __init__(self, X_star, u_star, frequency=10):
+  def __init__(self, frequency=10):
     print("TensorFlow version: {}".format(tf.__version__))
     print("Eager execution: {}".format(tf.executing_eagerly()))
     print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
 
-    self.X_star = X_star
-    self.u_star = u_star
     self.start_time = time.time()
     self.frequency = frequency
 
@@ -137,8 +137,10 @@ class Logger(object):
     return datetime.fromtimestamp(time.time() - self.start_time).strftime("%M:%S")
 
   def __get_error_u(self):
-    return 0.0
-    return self.model.error(self.X_star, self.u_star)
+    return self.error_fn()
+
+  def set_error_fn(self, error_fn):
+    self.error_fn = error_fn
   
   def log_train_start(self, model):
     print("\nTraining started")

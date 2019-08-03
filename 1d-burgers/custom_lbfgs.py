@@ -36,7 +36,7 @@ def verbose_func(s):
 
 final_loss = None
 times = []
-def lbfgs(opfunc, x, config, state, do_verbose, logger):
+def lbfgs(opfunc, x, config, state, do_verbose, log_fn):
   """port of lbfgs.lua, using TensorFlow eager mode.
   """
 
@@ -215,7 +215,7 @@ def lbfgs(opfunc, x, config, state, do_verbose, logger):
       break
 
     if do_verbose:
-      logger.log_train_epoch(nIter, f.numpy(), "", is_iter=True)
+      log_fn(nIter, f.numpy(), True)
       #print("Step %3d loss %6.5f msec %6.3f"%(nIter, f.numpy(), last_time()))
       record_time()
       times.append(last_time())
