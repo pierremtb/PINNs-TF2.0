@@ -12,6 +12,7 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 
+sys.path.append("1d-burgers")
 from custom_lbfgs import lbfgs, Struct
 from burgersutil import prep_data, Logger, plot_ide_disc_results, appDataPath
 
