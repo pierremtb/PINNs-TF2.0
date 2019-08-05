@@ -1,4 +1,4 @@
-# Adapted from https://github.com/yaroslavvb/stuff/blob/master/eager_lbfgs/eager_lbfgs.py
+#%% Adapted from https://github.com/yaroslavvb/stuff/blob/master/eager_lbfgs/eager_lbfgs.py
 
 import tensorflow as tf
 import numpy as np

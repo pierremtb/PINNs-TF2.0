@@ -1,3 +1,5 @@
+#%% Utils for Burger's equation
+
 import scipy.io
 import numpy as np
 import tensorflow as tf
