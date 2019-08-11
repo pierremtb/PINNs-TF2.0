@@ -23,11 +23,11 @@ N_u = 2000
 # DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
 layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
 # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-tf_epochs = 10000
+tf_epochs = 500
 tf_optimizer = tf.keras.optimizers.Adam(
   learning_rate=0.001)
 # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-nt_epochs = 500
+nt_epochs = 0
 nt_config = Struct()
 nt_config.learningRate = 0.8
 nt_config.maxIter = nt_epochs
@@ -37,7 +37,9 @@ nt_config.tolFun = 1.0 * np.finfo(float).eps
 #%% DEFINING THE MODEL
 
 class PhysicsInformedNN(object):
-  def __init__(self, layers, optimizer, logger, ub, lb):
+  def __init__(self, layers, optimizer, logger, ub, lb, bench_no_pinn=False):
+    self.bench_no_pinn = bench_no_pinn
+
     # Descriptive Keras model [2, 20, …, 20, 1]
     self.u_model = tf.keras.Sequential()
     self.u_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
@@ -104,8 +106,9 @@ class PhysicsInformedNN(object):
 
   # Defining custom loss
   def __loss(self, X_u, u, u_pred):
-    self.__f_model(X_u)
-    return tf.reduce_mean(tf.square(u - u_pred))
+    if self.bench_no_pinn == True:
+      self.__f_model(X_u)
+      return tf.reduce_mean(tf.square(u - u_pred))
     f_pred = self.__f_model(X_u)
     return tf.reduce_mean(tf.square(u - u_pred)) + \
       tf.reduce_mean(tf.square(f_pred))
@@ -117,7 +120,8 @@ class PhysicsInformedNN(object):
 
   def __wrap_training_variables(self):
     var = self.u_model.trainable_variables
-    # var.extend([self.lambda_1, self.lambda_2])
+    if self.bench_no_pinn == False:
+      var.extend([self.lambda_1, self.lambda_2])
     return var
 
   def get_weights(self):
@@ -128,8 +132,9 @@ class PhysicsInformedNN(object):
         biases = weights_biases[1]
         w.extend(weights)
         w.extend(biases)
-      # w.extend(self.lambda_1.numpy())
-      # w.extend(self.lambda_2.numpy())
+      if self.bench_no_pinn == False:
+        w.extend(self.lambda_1.numpy())
+        w.extend(self.lambda_2.numpy())
       return tf.convert_to_tensor(w, dtype=self.dtype)
 
   def set_weights(self, w):
@@ -142,8 +147,9 @@ class PhysicsInformedNN(object):
       biases = w[end_weights:end_weights + self.sizes_b[i]]
       weights_biases = [weights, biases]
       layer.set_weights(weights_biases)
-    # self.lambda_1.assign([w[-2]])
-    # self.lambda_2.assign([w[-1]])
+    if self.bench_no_pinn == False:
+      self.lambda_1.assign([w[-2]])
+      self.lambda_2.assign([w[-1]])
 
   def get_params(self, numpy=False):
     l1 = self.lambda_1
@@ -221,7 +227,7 @@ lambdas_star = (1.0, 0.01/np.pi)
 
 # Creating the model and training
 logger = Logger(frequency=10)
-pinn = PhysicsInformedNN(layers, tf_optimizer, logger, ub, lb)
+pinn = PhysicsInformedNN(layers, tf_optimizer, logger, ub, lb, bench_no_pinn=False)
 def error():
   l1, l2 = pinn.get_params(numpy=True)
   l1_star, l2_star = lambdas_star
@@ -235,6 +241,16 @@ pinn.fit(X_u_train, u_train, tf_epochs, nt_config)
 u_pred, f_pred = pinn.predict(X_star)
 lambda_1_pred, lambda_2_pred = pinn.get_params(numpy=True)
 
+#%%
+# Creating the non-PINN model and training
+pinn = PhysicsInformedNN(layers, tf_optimizer, logger, ub, lb, bench_no_pinn=True)
+pinn.fit(X_u_train, u_train, tf_epochs, nt_config)
+
+# Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
+u_pred, f_pred = pinn.predict(X_star)
+lambda_1_pred, lambda_2_pred = pinn.get_params(numpy=True)
+
+#%%
 # Noise case
 x, t, X, T, Exact_u, X_star, u_star, \
   X_u_train, u_train, ub, lb = prep_data(path, N_u, noise=0.01)
