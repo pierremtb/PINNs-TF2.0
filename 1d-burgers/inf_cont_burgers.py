@@ -19,7 +19,7 @@ from burgersutil import prep_data, Logger, plot_inf_cont_results, appDataPath
 #%% HYPER PARAMETERS
 
 # Data size on the solution u
-N_u = 50
+N_u = 100
 # Collocation points size, where we’ll check for f = 0
 N_f = 10000
 # DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
@@ -195,7 +195,7 @@ x, t, X, T, Exact_u, X_star, u_star, \
   X_u_train, u_train, X_f, ub, lb = prep_data(path, N_u, N_f, noise=0.0)
 
 # Creating the model and training
-logger = Logger(frequency=10)
+logger = Logger(frequency=100)
 pinn = PhysicsInformedNN(layers, tf_optimizer, logger, X_f, ub, lb, nu=0.01/np.pi)
 def error():
   u_pred, _ = pinn.predict(X_star)
@@ -208,4 +208,4 @@ u_pred, f_pred = pinn.predict(X_star)
 
 #%% PLOTTING
 plot_inf_cont_results(X_star, u_pred.flatten(), X_u_train, u_train,
-  Exact_u, X, T, x, t)
+  Exact_u, X, T, x, t) 
