@@ -185,7 +185,7 @@ class PhysicsInformedNN(object):
   def predict(self, X_star):
     u_star = self.u_model(X_star)
     f_star = self.f_model()
-    return u_star, f_star
+    return u_star.numpy(), f_star.numpy()
 
 #%% TRAINING THE MODEL
 
@@ -207,5 +207,5 @@ pinn.fit(X_u_train, u_train, tf_epochs, nt_config)
 u_pred, f_pred = pinn.predict(X_star)
 
 #%% PLOTTING
-plot_inf_cont_results(X_star, u_pred.numpy().flatten(), X_u_train, u_train,
+plot_inf_cont_results(X_star, u_pred.flatten(), X_u_train, u_train,
   Exact_u, X, T, x, t)
