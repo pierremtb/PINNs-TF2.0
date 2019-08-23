@@ -192,7 +192,7 @@ class PhysicsInformedNN(object):
 # Getting the data
 path = os.path.join(appDataPath, "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, \
-  X_u_train, u_train, X_f, ub, lb = prep_data(path, N_u, N_f, noise=0.0)
+  X_u_train, u_train, X_f, ub, lb = prep_data(path, N_u, N_f, noise=0.05)
 
 # Creating the model and training
 logger = Logger(frequency=100)

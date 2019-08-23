@@ -84,3 +84,20 @@ plot_ide_cont_results(X_star, u_pred, X_u_train, u_train,
 Exact_u, X, T, x, t, 0.0, 0.0, 0.0, 0.0)
 plot_ide_cont_results(X_star, u_pred_nn, X_u_train, u_train,
   Exact_u, X, T, x, t, 0.0, 0.0, 0.0, 0.0)
+
+#%% TRYING TO FIND LAMBDA_2
+grads = np.gradient(U_pred_nn)
+U_t = grads[0]
+U_x = grads[1]
+grads_grads_x = np.gradient(U_x)
+U_xx = grads_grads_x[1]
+
+lambdas = np.linspace(0, 1, 2000)
+print(lambdas)
+
+def r(l):
+    return np.square(U_t + U_pred * U_x - l * U_xx).mean()
+
+res = [r(l) for l in lambdas]
+
+plt.plot(lambdas, res)

@@ -35,6 +35,10 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
     # Keeping the 2D data for the solution data (real() is maybe to make it float by default, in case of zeroes)
     Exact_u = np.real(data['usol']).T # T x N
 
+    # x = np.load("1d-burgers/data/burgers_x.npy")[:, None]
+    # t = np.load("1d-burgers/data/burgers_t.npy")[:, None]
+    # Exact_u = np.load("1d-burgers/data/burgers_u.npy").T
+
     if N_n != None and q != None and ub != None and lb != None and idx_t_0 != None and idx_t_1 != None:
       dt = t[idx_t_1] - t[idx_t_0]
       idx_x = np.random.choice(Exact_u.shape[1], N_n, replace=False) 

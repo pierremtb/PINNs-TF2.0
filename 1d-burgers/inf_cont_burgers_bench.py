@@ -100,4 +100,32 @@ for i, _ in enumerate(N_u_sizes):
 for i, _ in enumerate(N_u_0_sizes):
     ax.annotate(f"{durations[i]:.4}", (N_u_0_sizes[i] + xOff, errors_0[i] + yOff))
 ax.annotate(f"{durationPinn:.4}", (N_u_pinn + xOff, errorPinn - yOff))
+plt.savefig("./figures/inf_cont_burgers_bench.png", dpi=300)
+plt.show()
+
+#%% Data plots
+path = os.path.join(appDataPath, "burgers_shock.mat")
+x, t, X, T, Exact_u, X_star, u_star, \
+  X_u_train, u_train, ub, lb = prep_data(path, 2000, noise=0.0)
+
+fig = plt.figure()
+ax = Axes3D(fig)
+ax.scatter(X_u_train[:, 0], X_u_train[:, 1], u_train)
+ax.set_xlabel("x")
+ax.set_ylabel("t")
+ax.set_zlabel("u(x, t)")
+plt.savefig("./figures/burgers_data_domain.png", dpi=300)
+plt.show()
+
+path = os.path.join(appDataPath, "burgers_shock.mat")
+x, t, X, T, Exact_u, X_star, u_star, \
+  X_u_train, u_train, X_f, ub, lb = prep_data(path, 100, 1000, noise=0.0)
+
+fig = plt.figure()
+ax = Axes3D(fig)
+ax.scatter(X_u_train[:, 0], X_u_train[:, 1], u_train)
+ax.set_xlabel("x")
+ax.set_ylabel("t")
+ax.set_zlabel("u(x, t)")
+plt.savefig("./figures/burgers_data_inibnd.png", dpi=300)
 plt.show()
