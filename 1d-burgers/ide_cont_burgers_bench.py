@@ -86,18 +86,42 @@ plot_ide_cont_results(X_star, u_pred_nn, X_u_train, u_train,
   Exact_u, X, T, x, t, 0.0, 0.0, 0.0, 0.0)
 
 #%% TRYING TO FIND LAMBDA_2
-grads = np.gradient(U_pred_nn)
-U_t = grads[0]
-U_x = grads[1]
-grads_grads_x = np.gradient(U_x)
-U_xx = grads_grads_x[1]
+def hessian(x):
+    """
+    Calculate the hessian matrix with finite differences
+    Parameters:
+       - x : ndarray
+    Returns:
+       an array of shape (x.dim, x.ndim) + x.shape
+       where the array[i, j, ...] corresponds to the second derivative x_ij
+    """
+    x_grad = np.gradient(x) 
+    hessian = np.empty((x.ndim, x.ndim) + x.shape, dtype=x.dtype) 
+    for k, grad_k in enumerate(x_grad):
+        # iterate over dimensions
+        # apply gradient again to every component of the first derivative.
+        tmp_grad = np.gradient(grad_k) 
+        for l, grad_kl in enumerate(tmp_grad):
+            hessian[k, l, :, :] = grad_kl
+    return hessian
 
-lambdas = np.linspace(0, 1, 2000)
+U = griddata(X_star, u_pred_nn.flatten(), (X, T), method='cubic').T
+dx = x[1, 0] - x[0, 0]
+dt = t[1, 0] - t[0, 0]
+grads = np.gradient(U)
+U_x = grads[0]
+U_t = grads[1]
+grads_2 = hessian(U)
+U_xx = grads_2[0, 0, :, :]
+
+lambdas = np.linspace(-1, 1, 2000)
 print(lambdas)
 
 def r(l):
-    return np.square(U_t + U_pred * U_x - l * U_xx).mean()
+    return np.square(U_t + U * U_x - l * U_xx).mean()
 
 res = [r(l) for l in lambdas]
 
 plt.plot(lambdas, res)
+
+#%%
