@@ -86,4 +86,29 @@ h = ax.imshow(U_pred.T, interpolation='nearest', cmap='rainbow',
                   origin='lower', aspect='auto')
 plt.show()
 
+data = scipy.io.loadmat("1d-burgers/data/burgers_mathematica.mat")
+
+# Flatten makes [[]] into [], [:,None] makes it a column vector
+t = data['t'].flatten()[:,None] # T x 1
+x = data['x'].flatten()[:,None] # N x 1
+
+# Keeping the 2D data for the solution data (real() is maybe to make it float by default, in case of zeroes)
+Exact_u = np.real(data['usol']).T # T x N
+
+X, T = np.meshgrid(x,t)
+
+# Preparing the inputs x and t (meshed as X, T) for predictions in one single array, as X_star
+X_star = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
+U_pred = griddata(X_star, Exact_u.flatten(), (X, T), method='cubic')
+    
+####### Row 0: u(t,x) ##################    
+gs0 = gridspec.GridSpec(1, 2)
+gs0.update(top=1-0.06, bottom=1-1.0/3.0+0.06, left=0.15, right=0.85, wspace=0)
+ax = plt.subplot(gs0[:, :])
+
+h = ax.imshow(U_pred.T, interpolation='nearest', cmap='rainbow', 
+            extent=[t.min(), t.max(), x.min(), x.max()], 
+                  origin='lower', aspect='auto')
+plt.show()
+
 #%%
