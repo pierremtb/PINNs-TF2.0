@@ -1,7 +1,9 @@
 #%% IMPORTING/SETTING UP PATHS
 
 import sys
+import json
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import numpy as np
 import tensorflow_probability as tfp
@@ -12,34 +14,36 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 
-sys.path.append("1dcomplex-schrodinger")
+eqnPath = "1dcomplex-schrodinger"
+sys.path.append(eqnPath)
 sys.path.append("utils")
 from custom_lbfgs import lbfgs, Struct
-from schrodingerutil import prep_data, Logger, plot_inf_cont_results, dataPath
+from schrodingerutil import prep_data, Logger, plot_inf_cont_results
 
 #%% HYPER PARAMETERS
 
-# Data size on the initial condition solution
-N_0 = 50
-# Collocation points on the boundaries
-N_b = 50
-# Collocation points on the domain
-N_f = 20000
-# DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
-layers = [2, 100, 100, 100, 100, 2]
-# Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-tf_epochs = 500
-tf_optimizer = tf.keras.optimizers.Adam(
-  learning_rate=0.1,
-  beta_1=0.99,
-  epsilon=1e-1)
-# Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-nt_epochs = 0
-nt_config = Struct()
-nt_config.learningRate = 0.8
-nt_config.maxIter = nt_epochs
-nt_config.nCorrection = 50
-nt_config.tolFun = 1.0 * np.finfo(float).eps
+if len(sys.argv) > 1:
+  with open(sys.argv[1]) as hpFile:
+    hp = json.load(hpFile)
+else:
+  hp = {}
+  # Data size on the initial condition solution
+  hp["N_0"] = 50
+  # Collocation points on the boundaries
+  hp["N_b"] = 50
+  # Collocation points on the domain
+  hp["N_f"] = 20000
+  # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
+  hp["layers"] = [2, 100, 100, 100, 100, 2]
+  # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
+  hp["tf_epochs"] = 2000
+  hp["tf_lr"] = 0.03
+  hp["tf_b1"] = 0.99
+  hp["tf_eps"] = 1e-1 
+  # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
+  hp["nt_epochs"] = 0
+  hp["nt_lr"] = 0.8
+  hp["nt_ncorr"] = 50
 
 #%% DEFINING THE MODEL
 
@@ -243,25 +247,43 @@ class PhysicsInformedNN(object):
 #%% TRAINING THE MODEL
 
 # Getting the data
-path = os.path.join(dataPath, "NLS.mat")
+path = os.path.join(eqnPath, "data", "NLS.mat")
 x, t, X, T, Exact_u, Exact_v, Exact_h, \
-  X_star, u_star, v_star, h_star, X_f, ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(path, N_0, N_b, N_f, noise=0.05)
+  X_star, u_star, v_star, h_star, X_f, ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(path, hp["N_0"], hp["N_b"], hp["N_f"], noise=0.05)
 
 #%%
 
 # Creating the model and training
-logger = Logger(frequency=1)
-pinn = PhysicsInformedNN(layers, tf_optimizer, logger, X_f, ub, lb)
+logger = Logger(frequency=100, hp=hp)
+
+
+# Setting up the optimizers with the previously defined hyper-parameters
+nt_config = Struct()
+nt_config.learningRate = hp["nt_lr"]
+nt_config.maxIter = hp["nt_epochs"]
+nt_config.nCorrection = hp["nt_ncorr"]
+nt_config.tolFun = 1.0 * np.finfo(float).eps
+tf_optimizer = tf.keras.optimizers.Adam(
+  learning_rate=hp["tf_lr"],
+  beta_1=hp["tf_b1"],
+  epsilon=hp["tf_eps"])
+
+pinn = PhysicsInformedNN(hp["layers"], tf_optimizer, logger, X_f, ub, lb)
+
+# Defining the error function for the logger
 def error():
   u_pred, v_pred = pinn.predict(X_star)
   h_pred = np.sqrt(u_pred**2 + v_pred**2)
   return np.linalg.norm(h_star - h_pred, 2) / np.linalg.norm(h_star, 2)
 logger.set_error_fn(error)
-pinn.fit(X0, H0, tf_epochs, nt_config)
+
+# Training the PINN
+pinn.fit(X0, H0, hp["tf_epochs"], nt_config)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, v_pred = pinn.predict(X_star)
 h_pred = np.sqrt(u_pred**2 + v_pred**2)
 
 #%% PLOTTING
-plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb) 
+plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb,
+  save_path=eqnPath, save_hp=hp) 
