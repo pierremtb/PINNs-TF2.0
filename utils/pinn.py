@@ -18,44 +18,16 @@ eqnPath = "1dcomplex-schrodinger"
 sys.path.append(eqnPath)
 sys.path.append("utils")
 from custom_lbfgs import lbfgs, Struct
-from schrodingerutil import prep_data, Logger, plot_inf_cont_results
-
-#%% HYPER PARAMETERS
-
-if len(sys.argv) > 1:
-  with open(sys.argv[1]) as hpFile:
-    hp = json.load(hpFile)
-else:
-  hp = {}
-  # Data size on the initial condition solution
-  hp["N_0"] = 50
-  # Collocation points on the boundaries
-  hp["N_b"] = 50
-  # Collocation points on the domain
-  hp["N_f"] = 20000
-  # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
-  hp["layers"] = [2, 100, 100, 100, 100, 2]
-  # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-  hp["tf_epochs"] = 2000
-  hp["tf_lr"] = 0.03
-  hp["tf_b1"] = 0.99
-  hp["tf_eps"] = 1e-1 
-  # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-  hp["nt_epochs"] = 0
-  hp["nt_lr"] = 0.8
-  hp["nt_ncorr"] = 50
-
-#%% DEFINING THE MODEL
 
 class PhysicsInformedNN(object):
-  def __init__(self, layers, optimizer, logger, X_f, ub, lb):
+  def __init__(self, layers, optimizer, logger):
     # Descriptive Keras model
-    self.H_model = tf.keras.Sequential()
-    self.H_model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
-    self.H_model.add(tf.keras.layers.Lambda(
+    self.deepModel = tf.keras.Sequential()
+    self.deepModel.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
+    self.deepModel.add(tf.keras.layers.Lambda(
       lambda X: 2.0*(X - lb)/(ub - lb) - 1.0))
     for width in layers[1:]:
-        self.H_model.add(tf.keras.layers.Dense(
+        self.deepModel.add(tf.keras.layers.Dense(
           width, activation=tf.nn.tanh,
           kernel_initializer='glorot_normal'))
 
@@ -71,23 +43,6 @@ class PhysicsInformedNN(object):
     self.logger = logger
 
     self.dtype = tf.float32
-
-    self.lb = lb
-    self.ub = ub
-
-    X_lb = np.concatenate((0*tb + lb[0], tb), 1) # (lb[0], tb)
-    X_ub = np.concatenate((0*tb + ub[0], tb), 1) # (ub[0], tb)
-
-    self.x_lb = X_lb[:,0:1]
-    self.t_lb = X_lb[:,1:2]
-    self.x_ub = X_ub[:,0:1]
-    self.t_ub = X_ub[:,1:2]
-    self.X_lb = tf.convert_to_tensor(np.hstack((self.x_lb, self.t_lb)), dtype=self.dtype)
-    self.X_ub = tf.convert_to_tensor(np.hstack((self.x_ub, self.t_ub)), dtype=self.dtype)
-
-    # Separating the collocation coordinates
-    self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
-    self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=self.dtype)
     
   # Defining custom loss
   def __loss(self, h, h_pred):
@@ -113,11 +68,11 @@ class PhysicsInformedNN(object):
 
   def __grad(self, X, h):
     with tf.GradientTape() as tape:
-      loss_value = self.__loss(h, self.H_model(X))
+      loss_value = self.__loss(h, self.deepModel(X))
     return loss_value, tape.gradient(loss_value, self.__wrap_training_variables())
 
   def __wrap_training_variables(self):
-    var = self.H_model.trainable_variables
+    var = self.deepModel.trainable_variables
     return var
 
   # Decomposes the multi-output into the complex values and spatial derivatives
@@ -130,7 +85,7 @@ class PhysicsInformedNN(object):
       # Packing together the inputs
       Xtemp = tf.stack([x[:,0], t[:,0]], axis=1)
 
-      h = self.H_model(Xtemp)
+      h = self.deepModel(Xtemp)
       u = h[:,0:1]
       v = h[:,1:2]
       
@@ -174,7 +129,7 @@ class PhysicsInformedNN(object):
 
   def get_weights(self):
     w = []
-    for layer in self.H_model.layers[1:]:
+    for layer in self.deepModel.layers[1:]:
       weights_biases = layer.get_weights()
       weights = weights_biases[0].flatten()
       biases = weights_biases[1]
@@ -183,7 +138,7 @@ class PhysicsInformedNN(object):
     return tf.convert_to_tensor(w, dtype=self.dtype)
 
   def set_weights(self, w):
-    for i, layer in enumerate(self.H_model.layers[1:]):
+    for i, layer in enumerate(self.deepModel.layers[1:]):
       start_weights = sum(self.sizes_w[:i]) + sum(self.sizes_b[:i])
       end_weights = sum(self.sizes_w[:i+1]) + sum(self.sizes_b[:i])
       weights = w[start_weights:end_weights]
@@ -194,7 +149,7 @@ class PhysicsInformedNN(object):
       layer.set_weights(weights_biases)
 
   def summary(self):
-    return self.H_model.summary()
+    return self.deepModel.summary()
 
   # The training function
   def fit(self, X_h, h, tf_epochs=5000, nt_config=Struct()):
@@ -215,8 +170,8 @@ class PhysicsInformedNN(object):
     def loss_and_flat_grad(w):
       with tf.GradientTape() as tape:
         self.set_weights(w)
-        loss_value = self.__loss(h, self.H_model(X_h))
-      grad = tape.gradient(loss_value, self.H_model.trainable_variables)
+        loss_value = self.__loss(h, self.deepModel(X_h))
+      grad = tape.gradient(loss_value, self.deepModel.trainable_variables)
       grad_flat = []
       for g in grad:
         grad_flat.append(tf.reshape(g, [-1]))
@@ -239,51 +194,7 @@ class PhysicsInformedNN(object):
     self.logger.log_train_end(tf_epochs + nt_config.maxIter)
 
   def predict(self, X_star):
-    h_pred = self.H_model(X_star)
+    h_pred = self.deepModel(X_star)
     u_pred = h_pred[:,0:1]
     v_pred = h_pred[:,1:2]
     return u_pred.numpy(), v_pred.numpy()
-
-#%% TRAINING THE MODEL
-
-# Getting the data
-path = os.path.join(eqnPath, "data", "NLS.mat")
-x, t, X, T, Exact_u, Exact_v, Exact_h, \
-  X_star, u_star, v_star, h_star, X_f, ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(path, hp["N_0"], hp["N_b"], hp["N_f"], noise=0.05)
-
-#%%
-
-# Creating the model and training
-logger = Logger(frequency=100, hp=hp)
-
-
-# Setting up the optimizers with the previously defined hyper-parameters
-nt_config = Struct()
-nt_config.learningRate = hp["nt_lr"]
-nt_config.maxIter = hp["nt_epochs"]
-nt_config.nCorrection = hp["nt_ncorr"]
-nt_config.tolFun = 1.0 * np.finfo(float).eps
-tf_optimizer = tf.keras.optimizers.Adam(
-  learning_rate=hp["tf_lr"],
-  beta_1=hp["tf_b1"],
-  epsilon=hp["tf_eps"])
-
-pinn = PhysicsInformedNN(hp["layers"], tf_optimizer, logger, X_f, ub, lb)
-
-# Defining the error function for the logger
-def error():
-  u_pred, v_pred = pinn.predict(X_star)
-  h_pred = np.sqrt(u_pred**2 + v_pred**2)
-  return np.linalg.norm(h_star - h_pred, 2) / np.linalg.norm(h_star, 2)
-logger.set_error_fn(error)
-
-# Training the PINN
-pinn.fit(X0, H0, hp["tf_epochs"], nt_config)
-
-# Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
-u_pred, v_pred = pinn.predict(X_star)
-h_pred = np.sqrt(u_pred**2 + v_pred**2)
-
-#%% PLOTTING
-plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb,
-  save_path=eqnPath, save_hp=hp) 

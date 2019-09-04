@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pyDOE import lhs
 import os
+import json
 import sys
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
@@ -14,14 +15,7 @@ from scipy.interpolate import griddata
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-# "." for Colab/VSCode, and ".." for GitHub
-repoPath = os.path.join(".", "PINNs")
-# repoPath = os.path.join("..", "PINNs")
-utilsPath = os.path.join(repoPath, "Utilities")
-dataPath = os.path.join(repoPath, "main", "Data")
-appDataPath = os.path.join(repoPath, "appendix", "Data")
-
-sys.path.insert(0, utilsPath)
+sys.path.append("utils")
 from plotting import newfig, savefig
 
 def prep_data(path, N_0, N_b, N_f, noise):
@@ -64,10 +58,16 @@ def prep_data(path, N_0, N_b, N_f, noise):
         X_star, u_star, v_star, h_star, X_f, ub, lb, tb, x0, u0, v0, X0, H0
 
 class Logger(object):
-  def __init__(self, frequency=10):
+  def __init__(self, frequency=10, hp=None):
+    if hp != None:
+      print("Hyperparameters:")
+      print(json.dumps(hp, indent=2))
+      print()
+    
     print("TensorFlow version: {}".format(tf.__version__))
     print("Eager execution: {}".format(tf.executing_eagerly()))
     print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
+    
 
     self.start_time = time.time()
     self.frequency = frequency
@@ -99,7 +99,7 @@ class Logger(object):
     print("==================")
     print(f"Training finished (epoch {epoch}): duration = {self.__get_elapsed()}  error = {self.__get_error_u():.4e}  " + custom)
 
-def plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb, file=None):
+def plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb, save_path=None, save_hp=None):
 
     # Interpolating the results on the whole (x,t) domain.
     # griddata(points, values, points at which to interpolate, method)
@@ -178,7 +178,15 @@ def plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, u
     ax.set_ylim([-0.1,5.1])    
     ax.set_title('$t = %.2f$' % (t[125]), fontsize = 10)
 
-    plt.show()
+    if save_path != None and save_hp != None:
+      now = datetime.now()
+      scriptName = sys.argv[0].split("/")[-1].split(".py")[0]
+      resDir = os.path.join(save_path, "results", f"{now.strftime('%Y%m%d-%H%M%S')}-{scriptName}")
+      os.mkdir(resDir)
+      print("Saving results to directory ", resDir)
+      savefig(os.path.join(resDir, "graph"))
+      with open(os.path.join(resDir, "hp.json"), "w") as f:
+        json.dump(save_hp, f)
 
-    if file != None:
-        savefig(file)
+    else:
+      plt.show()
