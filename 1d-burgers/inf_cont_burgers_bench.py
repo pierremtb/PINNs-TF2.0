@@ -23,7 +23,12 @@ from burgersutil import prep_data, Logger, plot_inf_cont_results, appDataPath
 
 startPinn = time.time()
 # Creating the model and training
-from inf_cont_burgers import N_u, N_f, layers, tf_epochs, nt_epochs, u_pred, u_star
+from inf_cont_burgers import hp, u_pred, u_star
+N_u = ["N_u"]
+N_f = ["N_f"]
+layers = ["layers"]
+tf_epochs = ["tf_epochs"]
+nt_epochs = ["nt_epochs"]
 N_u_pinn = N_u
 durationPinn = time.time() - startPinn
 errorPinn = np.linalg.norm(u_star - u_pred, 2) / np.linalg.norm(u_star, 2)

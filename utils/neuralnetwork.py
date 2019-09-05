@@ -85,6 +85,20 @@ class NeuralNetwork(object):
       weights_biases = [weights, biases]
       layer.set_weights(weights_biases)
 
+  def get_loss_and_flat_grad(self, X, u):
+    def loss_and_flat_grad(w):
+      with tf.GradientTape() as tape:
+        self.set_weights(w)
+        loss_value = self.loss(u, self.model(X))
+      grad = tape.gradient(loss_value, self.wrap_training_variables())
+      grad_flat = []
+      for g in grad:
+        grad_flat.append(tf.reshape(g, [-1]))
+      grad_flat =  tf.concat(grad_flat, 0)
+      return loss_value, grad_flat
+      
+    return loss_and_flat_grad
+
   def summary(self):
     return self.model.summary()
 
@@ -104,16 +118,7 @@ class NeuralNetwork(object):
       self.logger.log_train_epoch(epoch, loss_value)
     
     self.logger.log_train_opt("LBFGS")
-    def loss_and_flat_grad(w):
-      with tf.GradientTape() as tape:
-        self.set_weights(w)
-        loss_value = self.loss(u, self.model(X_u))
-      grad = tape.gradient(loss_value, self.wrap_training_variables())
-      grad_flat = []
-      for g in grad:
-        grad_flat.append(tf.reshape(g, [-1]))
-      grad_flat =  tf.concat(grad_flat, 0)
-      return loss_value, grad_flat
+    loss_and_flat_grad = self.get_loss_and_flat_grad(X_u, u)
     # tfp.optimizer.lbfgs_minimize(
     #   loss_and_flat_grad,
     #   initial_position=self.get_weights(),

@@ -5,6 +5,7 @@ import os
 import tensorflow as tf
 import numpy as np
 import tensorflow_probability as tfp
+import json
 
 # Manually making sure the numpy random seeds are "the same" on all devices
 np.random.seed(1234)
@@ -15,8 +16,7 @@ tf.random.set_seed(1234)
 eqnPath = "1d-burgers"
 sys.path.append(eqnPath)
 sys.path.append("utils")
-from custom_lbfgs import lbfgs, Struct
-from burgersutil import prep_data, Logger, plot_ide_cont_results, appDataPath
+from burgersutil import prep_data, Logger, plot_ide_cont_results
 from neuralnetwork import NeuralNetwork
 
 #%% HYPER PARAMETERS
@@ -177,9 +177,11 @@ x, t, X, T, Exact_u, X_star, u_star, \
   X_u_train, u_train, ub, lb = prep_data(path, hp["N_u"], noise=0.0)
 lambdas_star = (1.0, 0.01/np.pi)
 
-# Creating the model and training
+# Creating the model
 logger = Logger(frequency=10)
 pinn = BurgersInformedNN(hp, logger, ub, lb)
+
+# Defining the error function and training
 def error():
   l1, l2 = pinn.get_params(numpy=True)
   l1_star, l2_star = lambdas_star

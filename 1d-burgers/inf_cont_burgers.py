@@ -16,8 +16,7 @@ tf.random.set_seed(1234)
 eqnPath = "1d-burgers"
 sys.path.append(eqnPath)
 sys.path.append("utils")
-from custom_lbfgs import lbfgs, Struct
-from burgersutil import prep_data, Logger, plot_inf_cont_results, appDataPath
+from burgersutil import prep_data, Logger, plot_inf_cont_results
 from neuralnetwork import NeuralNetwork
 
 #%% HYPER PARAMETERS
@@ -104,12 +103,11 @@ path = os.path.join(eqnPath, "data", "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, \
   X_u_train, u_train, X_f, ub, lb = prep_data(path, hp["N_u"], hp["N_f"], noise=0.0)
 
-# Creating the model and training
+# Creating the model
 logger = Logger(frequency=100)
-
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb, nu=0.01/np.pi)
 
-# Defining the error function for the logger
+# Defining the error function for the logger and training
 def error():
   u_pred, _ = pinn.predict(X_star)
   return np.linalg.norm(u_star - u_pred, 2) / np.linalg.norm(u_star, 2)
@@ -121,4 +119,4 @@ u_pred, _ = pinn.predict(X_star)
 
 #%% PLOTTING
 plot_inf_cont_results(X_star, u_pred.flatten(), X_u_train, u_train,
-  Exact_u, X, T, x, t, save_path=eqnPath, save_hp=hp) 
+  Exact_u, X, T, x, t, save_path=eqnPath, save_hp=hp)

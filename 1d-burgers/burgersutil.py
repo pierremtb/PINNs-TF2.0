@@ -241,7 +241,7 @@ def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, 
   else:
     plt.show()
 
-def plot_inf_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t, file=None):
+def plot_inf_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t, save_path=None, save_hp=None):
   fig, ax = newfig(1.0, 1.2)
   ax.axis('off')
   
@@ -290,16 +290,17 @@ def plot_inf_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, 
   ax.set_xlim([lb-0.1, ub+0.1])
   
   ax.legend(loc='upper center', bbox_to_anchor=(0.1, -0.3), ncol=2, frameon=False)
-    
-  plt.show()
 
-  if file != None:
-    savefig(file)
+  if save_path != None and save_hp != None:
+      saveResultDir(save_path, save_hp)
+
+  else:
+    plt.show()
 
 
 def plot_ide_disc_results(x_star, t_star, idx_t_0, idx_t_1, x_0, u_0, x_1, u_1,
   ub, lb, u_1_pred, Exact, lambda_1_value, lambda_1_value_noisy, lambda_2_value, lambda_2_value_noisy,
-  x, t, file=None):  
+  x, t, save_path=None, save_hp=None):  
   fig, ax = newfig(1.0, 1.5)
   ax.axis('off')
   
@@ -352,7 +353,12 @@ def plot_ide_disc_results(x_star, t_star, idx_t_0, idx_t_1, x_0, u_0, x_1, u_1,
   s5 = r'\end{tabular}$'
   s = s1+s2+s3+s4+s5
   ax.text(-0.1,0.2,s)
-  plt.show()
+
+  if save_path != None and save_hp != None:
+      saveResultDir(save_path, save_hp)
+
+  else:
+    plt.show()
 
 def plot_ide_cont_results(X_star, u_pred, X_u_train, u_train,
   Exact_u, X, T, x, t, lambda_1_value, lambda_1_value_noisy, lambda_2_value, lambda_2_value_noisy):
