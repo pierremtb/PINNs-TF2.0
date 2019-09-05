@@ -8,7 +8,21 @@ Created on Mon Oct  9 20:11:57 2017
 
 import numpy as np
 import matplotlib as mpl
+from datetime import datetime
+import sys
+import os
+import json
 #mpl.use('pgf')
+
+def saveResultDir(save_path, save_hp):
+    now = datetime.now()
+    scriptName =  os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    resDir = os.path.join(save_path, "results", f"{now.strftime('%Y%m%d-%H%M%S')}-{scriptName}")
+    os.mkdir(resDir)
+    print("Saving results to directory ", resDir)
+    savefig(os.path.join(resDir, "graph"))
+    with open(os.path.join(resDir, "hp.json"), "w") as f:
+        json.dump(save_hp, f)
 
 def figsize(scale, nplots = 1):
     fig_width_pt = 390.0                          # Get this from LaTeX using \the\textwidth
@@ -51,12 +65,12 @@ def savefig(filename, crop = True):
     if crop == True:
 #        plt.savefig('{}.pgf'.format(filename), bbox_inches='tight', pad_inches=0)
         plt.savefig('{}.pdf'.format(filename), bbox_inches='tight', pad_inches=0)
-        plt.savefig('{}.eps'.format(filename), bbox_inches='tight', pad_inches=0)
+        # plt.savefig('{}.eps'.format(filename), bbox_inches='tight', pad_inches=0)
         plt.savefig('{}.png'.format(filename), bbox_inches='tight', pad_inches=0)
     else:
 #        plt.savefig('{}.pgf'.format(filename))
         plt.savefig('{}.pdf'.format(filename))
-        plt.savefig('{}.eps'.format(filename))
+        # plt.savefig('{}.eps'.format(filename))
         plt.savefig('{}.png'.format(filename))
 
 ## Simple plot

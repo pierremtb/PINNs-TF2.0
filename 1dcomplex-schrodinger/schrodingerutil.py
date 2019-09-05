@@ -16,7 +16,7 @@ import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 sys.path.append("utils")
-from plotting import newfig, savefig
+from plotting import newfig, savefig, saveResultDir
 
 def prep_data(path, N_0, N_b, N_f, noise):
         
@@ -179,14 +179,7 @@ def plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, u
     ax.set_title('$t = %.2f$' % (t[125]), fontsize = 10)
 
     if save_path != None and save_hp != None:
-      now = datetime.now()
-      scriptName = sys.argv[0].split("/")[-1].split(".py")[0]
-      resDir = os.path.join(save_path, "results", f"{now.strftime('%Y%m%d-%H%M%S')}-{scriptName}")
-      os.mkdir(resDir)
-      print("Saving results to directory ", resDir)
-      savefig(os.path.join(resDir, "graph"))
-      with open(os.path.join(resDir, "hp.json"), "w") as f:
-        json.dump(save_hp, f)
+      saveResultDir(save_path, save_hp)
 
     else:
       plt.show()

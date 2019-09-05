@@ -1,6 +1,7 @@
 #%% IMPORTING/SETTING UP PATHS
 
 import sys
+import json
 import os
 import tensorflow as tf
 import numpy as np
@@ -12,31 +13,34 @@ tf.random.set_seed(1234)
 
 #%% LOCAL IMPORTS
 
-sys.path.append("1d-burgers")
+eqnPath = "1d-burgers"
+sys.path.append(eqnPath)
+sys.path.append("utils")
 from custom_lbfgs import lbfgs, Struct
 from burgersutil import prep_data, Logger, plot_inf_cont_results, appDataPath
 
 #%% HYPER PARAMETERS
 
-# Data size on the solution u
-N_u = 100
-# Collocation points size, where we’ll check for f = 0
-N_f = 10000
-# DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
-layers = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
-# Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-tf_epochs = 100
-tf_optimizer = tf.keras.optimizers.Adam(
-  learning_rate=0.1,
-  beta_1=0.99,
-  epsilon=1e-1)
-# Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-nt_epochs = 2000
-nt_config = Struct()
-nt_config.learningRate = 0.8
-nt_config.maxIter = nt_epochs
-nt_config.nCorrection = 50
-nt_config.tolFun = 1.0 * np.finfo(float).eps
+if len(sys.argv) > 1:
+  with open(sys.argv[1]) as hpFile:
+    hp = json.load(hpFile)
+else:
+  hp = {}
+  # Data size on the solution u
+  hp["N_u"] = 100
+  # Collocation points size, where we’ll check for f = 0
+  hp["N_f"] = 10000
+  # DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
+  hp["layers"] = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
+  # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
+  hp["tf_epochs"] = 100
+  hp["tf_lr"] = 0.03
+  hp["tf_b1"] = 0.9
+  hp["tf_eps"] = None 
+  # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
+  hp["nt_epochs"] = 200
+  hp["nt_lr"] = 0.8
+  hp["nt_ncorr"] = 50
 
 #%% DEFINING THE MODEL
 
@@ -192,20 +196,34 @@ class PhysicsInformedNN(object):
 # Getting the data
 path = os.path.join(appDataPath, "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, \
-  X_u_train, u_train, X_f, ub, lb = prep_data(path, N_u, N_f, noise=0.05)
+  X_u_train, u_train, X_f, ub, lb = prep_data(path, hp["N_u"], hp["N_f"], noise=0.05)
 
 # Creating the model and training
 logger = Logger(frequency=100)
-pinn = PhysicsInformedNN(layers, tf_optimizer, logger, X_f, ub, lb, nu=0.01/np.pi)
+
+# Setting up the optimizers with the previously defined hyper-parameters
+nt_config = Struct()
+nt_config.learningRate = hp["nt_lr"]
+nt_config.maxIter = hp["nt_epochs"]
+nt_config.nCorrection = hp["nt_ncorr"]
+nt_config.tolFun = 1.0 * np.finfo(float).eps
+tf_optimizer = tf.keras.optimizers.Adam(
+  learning_rate=hp["tf_lr"],
+  beta_1=hp["tf_b1"],
+  epsilon=hp["tf_eps"])
+
+pinn = PhysicsInformedNN(hp["layers"], tf_optimizer, logger, X_f, ub, lb, nu=0.01/np.pi)
+
+# Defining the error function for the logger
 def error():
   u_pred, _ = pinn.predict(X_star)
   return np.linalg.norm(u_star - u_pred, 2) / np.linalg.norm(u_star, 2)
 logger.set_error_fn(error)
-pinn.fit(X_u_train, u_train, tf_epochs, nt_config)
+pinn.fit(X_u_train, u_train, hp["tf_epochs"], nt_config)
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, f_pred = pinn.predict(X_star)
 
 #%% PLOTTING
 plot_inf_cont_results(X_star, u_pred.flatten(), X_u_train, u_train,
-  Exact_u, X, T, x, t) 
+  Exact_u, X, T, x, t, save_path=eqnPath, save_hp=hp) 

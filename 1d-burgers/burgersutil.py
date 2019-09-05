@@ -21,8 +21,8 @@ utilsPath = os.path.join(repoPath, "Utilities")
 dataPath = os.path.join(repoPath, "main", "Data")
 appDataPath = os.path.join(repoPath, "appendix", "Data")
 
-sys.path.insert(0, utilsPath)
-from plotting import newfig, savefig
+sys.path.append("utils")
+from plotting import newfig, savefig, saveResultDir
 
 def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, noise=0.0, idx_t_0=None, idx_t_1=None, N_0=None, N_1=None):
     # Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
@@ -166,7 +166,7 @@ class Logger(object):
     print("==================")
     print(f"Training finished (epoch {epoch}): duration = {self.__get_elapsed()}  error = {self.__get_error_u():.4e}  " + custom)
 
-def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, file=None):
+def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, save_path=None, save_hp=None):
 
   # Interpolating the results on the whole (x,t) domain.
   # griddata(points, values, points at which to interpolate, method)
@@ -235,10 +235,11 @@ def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, 
   ax.set_ylim([-1.1,1.1])    
   ax.set_title('$t = 0.75$', fontsize = 10)
 
-  plt.show()
+  if save_path != None and save_hp != None:
+      saveResultDir(save_path, save_hp)
 
-  if file != None:
-    savefig(file)
+  else:
+    plt.show()
 
 def plot_inf_disc_results(x_star, idx_t_0, idx_t_1, x_0, u_0, ub, lb, u_1_pred, Exact_u, x, t, file=None):
   fig, ax = newfig(1.0, 1.2)

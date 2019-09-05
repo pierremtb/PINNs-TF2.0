@@ -249,7 +249,8 @@ class PhysicsInformedNN(object):
 # Getting the data
 path = os.path.join(eqnPath, "data", "NLS.mat")
 x, t, X, T, Exact_u, Exact_v, Exact_h, \
-  X_star, u_star, v_star, h_star, X_f, ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(path, hp["N_0"], hp["N_b"], hp["N_f"], noise=0.05)
+  X_star, u_star, v_star, h_star, X_f, \
+  ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(path, hp["N_0"], hp["N_b"], hp["N_f"], noise=0.05)
 
 #%%
 
