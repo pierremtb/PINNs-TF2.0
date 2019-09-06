@@ -26,6 +26,7 @@ class NeuralNetwork(object):
       epsilon=hp["tf_eps"])
 
     # Descriptive Keras model
+    tf.keras.backend.set_floatx("float32")
     self.model = tf.keras.Sequential()
     self.model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
     self.model.add(tf.keras.layers.Lambda(
@@ -33,7 +34,7 @@ class NeuralNetwork(object):
     for width in layers[1:]:
         self.model.add(tf.keras.layers.Dense(
           width, activation=tf.nn.tanh,
-          kernel_initializer='glorot_normal'))
+          kernel_initializer="glorot_normal"))
 
     # Computing the sizes of weights/biases for future decomposition
     self.sizes_w = []

@@ -36,8 +36,10 @@ def prep_data(path, N_0, N_b, N_f, noise):
     v_star = Exact_v.T.flatten()[:,None]
     h_star = Exact_h.T.flatten()[:,None]
 
-    lb = X_star.min(axis=0)
-    ub = X_star.max(axis=0) 
+    # lb = X_star.min(axis=0)
+    # ub = X_star.max(axis=0) 
+    lb = np.array([-5.0, 0.0])
+    ub = np.array([5.0, np.pi/2])
     
     ###########################
     
@@ -49,7 +51,8 @@ def prep_data(path, N_0, N_b, N_f, noise):
     idx_t = np.random.choice(t.shape[0], N_b, replace=False)
     tb = t[idx_t,:]
 
-    X0 = np.hstack((x0, tb))
+    # X0 = np.hstack((x0, tb))
+    X0 = np.concatenate((x0, 0*x0), 1) # (x0, 0)
     H0 = np.hstack((u0, v0))
     
     X_f = lb + (ub-lb)*lhs(2, N_f)
