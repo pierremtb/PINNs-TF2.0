@@ -37,13 +37,13 @@ else:
   # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
   hp["layers"] = [2, 100, 100, 100, 100, 2]
   # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-  hp["tf_epochs"] = 500
-  hp["tf_lr"] = 0.04
+  hp["tf_epochs"] = 100
+  hp["tf_lr"] = 0.03
   hp["tf_b1"] = 0.99
   hp["tf_eps"] = 1e-1 
   # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-  hp["nt_epochs"] = 500
-  hp["nt_lr"] = 0.8
+  hp["nt_epochs"] = 0
+  hp["nt_lr"] = 1.0
   hp["nt_ncorr"] = 50
 
 #%% DEFINING THE MODEL
@@ -76,7 +76,7 @@ class SchrodingerInformedNN(NeuralNetwork):
     u_lb_pred, v_lb_pred, u_x_lb_pred, v_x_lb_pred = self.uv_model(self.X_lb)
     u_ub_pred, v_ub_pred, u_x_ub_pred, v_x_ub_pred = self.uv_model(self.X_ub)
     f_u_pred, f_v_pred = self.f_model()
-    
+
     return tf.reduce_mean(tf.square(u0 - u0_pred)) + \
            tf.reduce_mean(tf.square(v0 - v0_pred)) + \
            tf.reduce_mean(tf.square(u_lb_pred - u_ub_pred)) + \
@@ -121,6 +121,11 @@ class SchrodingerInformedNN(NeuralNetwork):
 
       # Getting the prediction
       u, v, u_x, v_x = self.uv_model(X_f)
+      # h = self.model(X_f)
+      # u = tf.convert_to_tensor(h[:,0:1], dtype=self.dtype)
+      # v = tf.convert_to_tensor(h[:,1:2], dtype=self.dtype)
+      # u_x = tape.gradient(u, x)
+      # v_x = tape.gradient(v, x)
     
     # Getting the other derivatives
     u_xx = tape.gradient(u_x, self.x_f)
@@ -130,9 +135,10 @@ class SchrodingerInformedNN(NeuralNetwork):
 
     # Letting the tape go
     del tape
-        
-    f_u = u_t + 0.5*v_xx + (u**2 + v**2)*v
-    f_v = v_t - 0.5*u_xx - (u**2 + v**2)*u   
+    
+    h2 = (u**2 + v**2)
+    f_u = u_t + 0.5*v_xx + h2*v
+    f_v = v_t - 0.5*u_xx - h2*u   
     
     return f_u, f_v
 
