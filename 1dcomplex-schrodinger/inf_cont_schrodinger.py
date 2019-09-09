@@ -43,7 +43,7 @@ else:
   hp["tf_b1"] = 0.99
   hp["tf_eps"] = 1e-1 
   # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-  hp["nt_epochs"] = 500
+  hp["nt_epochs"] = 1000
   hp["nt_lr"] = 1.2
   hp["nt_ncorr"] = 50
 
@@ -68,19 +68,27 @@ class SchrodingerInformedNN(NeuralNetwork):
     
   # Defining custom loss
   def loss(self):
-    u0_pred, v0_pred, _, _ = self.uv_model(self.X0)
+    # u0_pred, v0_pred, _, _ = self.uv_model(self.X0)
+    h0_pred = self.model(self.X0)
+    u0_pred = h0_pred[:, 0:1]
+    v0_pred = h0_pred[:, 1:2]
     u_lb_pred, v_lb_pred, u_x_lb_pred, v_x_lb_pred = self.uv_model(self.X_lb)
     u_ub_pred, v_ub_pred, u_x_ub_pred, v_x_ub_pred = self.uv_model(self.X_ub)
     f_u_pred, f_v_pred = self.f_model()
 
-    return tf.reduce_mean(tf.square(self.u0 - u0_pred)) + \
-           tf.reduce_mean(tf.square(self.v0 - v0_pred)) + \
-           tf.reduce_mean(tf.square(u_lb_pred - u_ub_pred)) + \
+    mse_0 = tf.reduce_mean(tf.square(self.u0 - u0_pred)) + \
+           tf.reduce_mean(tf.square(self.v0 - v0_pred))
+    mse_b = tf.reduce_mean(tf.square(u_lb_pred - u_ub_pred)) + \
            tf.reduce_mean(tf.square(v_lb_pred - v_ub_pred)) + \
            tf.reduce_mean(tf.square(u_x_lb_pred - u_x_ub_pred)) + \
-           tf.reduce_mean(tf.square(v_x_lb_pred - v_x_ub_pred)) + \
-           tf.reduce_mean(tf.square(f_u_pred)) + \
+           tf.reduce_mean(tf.square(v_x_lb_pred - v_x_ub_pred))
+
+    mse_f = tf.reduce_mean(tf.square(f_u_pred)) + \
            tf.reduce_mean(tf.square(f_v_pred))
+    
+    print(f"mse_0 {mse_0}    mse_b {mse_b}    mse_f    {mse_f}")
+    return mse_0 + mse_b + mse_f
+           
 
   # Decomposes the multi-output into the complex values and spatial derivatives
   def uv_model(self, X):
