@@ -130,42 +130,6 @@ def prep_data(path, N_u=None, N_f=None, N_n=None, q=None, ub=None, lb=None, nois
 
     return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train, ub, lb
 
-class Logger(object):
-  def __init__(self, frequency=10):
-    print("TensorFlow version: {}".format(tf.__version__))
-    print("Eager execution: {}".format(tf.executing_eagerly()))
-    print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
-
-    self.start_time = time.time()
-    self.frequency = frequency
-
-  def __get_elapsed(self):
-    return datetime.fromtimestamp(time.time() - self.start_time).strftime("%M:%S")
-
-  def __get_error_u(self):
-    return self.error_fn()
-
-  def set_error_fn(self, error_fn):
-    self.error_fn = error_fn
-  
-  def log_train_start(self, model):
-    print("\nTraining started")
-    print("================")
-    self.model = model
-    print(self.model.summary())
-
-  def log_train_epoch(self, epoch, loss, custom="", is_iter=False):
-    if epoch % self.frequency == 0:
-      print(f"{'nt_epoch' if is_iter else 'tf_epoch'} = {epoch:6d}  elapsed = {self.__get_elapsed()}  loss = {loss:.4e}  error = {self.__get_error_u():.4e}  " + custom)
-
-  def log_train_opt(self, name):
-    # print(f"tf_epoch =      0  elapsed = 00:00  loss = 2.7391e-01  error = 9.0843e-01")
-    print(f"—— Starting {name} optimization ——")
-
-  def log_train_end(self, epoch, custom=""):
-    print("==================")
-    print(f"Training finished (epoch {epoch}): duration = {self.__get_elapsed()}  error = {self.__get_error_u():.4e}  " + custom)
-
 def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, save_path=None, save_hp=None):
 
   # Interpolating the results on the whole (x,t) domain.

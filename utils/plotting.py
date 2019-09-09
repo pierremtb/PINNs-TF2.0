@@ -1,18 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Oct  9 20:11:57 2017
-
-@author: mraissi
-"""
-
 import numpy as np
 import matplotlib as mpl
 from datetime import datetime
 import sys
 import os
 import json
-#mpl.use('pgf')
 
 def saveResultDir(save_path, save_hp):
     now = datetime.now()
@@ -23,6 +14,13 @@ def saveResultDir(save_path, save_hp):
     savefig(os.path.join(resDir, "graph"))
     with open(os.path.join(resDir, "hp.json"), "w") as f:
         json.dump(save_hp, f)
+
+
+# MIT License
+# 
+# Copyright (c) 2018 maziarraissi
+# 
+# https://github.com/maziarraissi/PINNs
 
 def figsize(scale, nplots = 1):
     fig_width_pt = 390.0                          # Get this from LaTeX using \the\textwidth

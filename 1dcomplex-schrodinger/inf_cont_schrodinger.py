@@ -18,8 +18,9 @@ eqnPath = "1dcomplex-schrodinger"
 sys.path.append(eqnPath)
 sys.path.append("utils")
 from custom_lbfgs import lbfgs, Struct
-from schrodingerutil import prep_data, Logger, plot_inf_cont_results
+from schrodingerutil import prep_data, plot_inf_cont_results
 from neuralnetwork import NeuralNetwork
+from logger import Logger
 
 #%% HYPER PARAMETERS
 
@@ -37,13 +38,13 @@ else:
   # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
   hp["layers"] = [2, 100, 100, 100, 100, 2]
   # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-  hp["tf_epochs"] = 100
+  hp["tf_epochs"] = 50
   hp["tf_lr"] = 0.06
   hp["tf_b1"] = 0.99
   hp["tf_eps"] = 1e-1 
   # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
   hp["nt_epochs"] = 500
-  hp["nt_lr"] = 0.8
+  hp["nt_lr"] = 1.2
   hp["nt_ncorr"] = 50
 
 #%% DEFINING THE MODEL
@@ -54,19 +55,12 @@ class SchrodingerInformedNN(NeuralNetwork):
 
     X_lb = np.concatenate((0*tb + lb[0], tb), 1) # (lb[0], tb)
     X_ub = np.concatenate((0*tb + ub[0], tb), 1) # (ub[0], tb)
-
-    self.x_lb = X_lb[:,0:1]
-    self.t_lb = X_lb[:,1:2]
-    self.x_ub = X_ub[:,0:1]
-    self.t_ub = X_ub[:,1:2]
-    self.X_lb = tf.convert_to_tensor(np.hstack((self.x_lb, self.t_lb)), dtype=self.dtype)
-    self.X_ub = tf.convert_to_tensor(np.hstack((self.x_ub, self.t_ub)), dtype=self.dtype)
+    self.X_lb = tf.convert_to_tensor(X_lb, dtype=self.dtype)
+    self.X_ub = tf.convert_to_tensor(X_ub, dtype=self.dtype)
 
     self.X0 = tf.convert_to_tensor(np.concatenate((x0, 0*x0), 1), dtype=self.dtype) # (x0, 0)
-    self.x0 = X0[:,0:1]
-    self.t0 = X0[:,1:2]
-    self.u0 = u0
-    self.v0 = v0
+    self.u0 = tf.convert_to_tensor(u0, dtype=self.dtype)
+    self.v0 = tf.convert_to_tensor(v0, dtype=self.dtype)
 
     # Separating the collocation coordinates
     self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
@@ -106,6 +100,11 @@ class SchrodingerInformedNN(NeuralNetwork):
     u_x = tape.gradient(u, x)
     v_x = tape.gradient(v, x)
     del tape
+
+    # print("u", tf.reduce_mean(tf.square(u)))
+    # print("u_x", tf.reduce_mean(tf.square(u_x)))
+    # print("v", tf.reduce_mean(tf.square(v)))
+    # print("v_x", tf.reduce_mean(tf.square(v_x)))
 
     return u, v, u_x, v_x
 
@@ -154,6 +153,7 @@ class SchrodingerInformedNN(NeuralNetwork):
     def loss_and_flat_grad(w):
       with tf.GradientTape() as tape:
         self.set_weights(w)
+        tape.watch(self.wrap_training_variables())
         loss_value = self.loss()
       grad = tape.gradient(loss_value, self.wrap_training_variables())
       grad_flat = []
@@ -210,22 +210,8 @@ x, t, X, T, Exact_u, Exact_v, Exact_h, \
   X_star, u_star, v_star, h_star, X_f, \
   ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(path, hp["N_0"], hp["N_b"], hp["N_f"], noise=0.0)
 
-#%%
-
-# Creating the model and training
+# Creating the model
 logger = Logger(frequency=10, hp=hp)
-
-
-# Setting up the optimizers with the previously defined hyper-parameters
-nt_config = Struct()
-nt_config.learningRate = hp["nt_lr"]
-nt_config.maxIter = hp["nt_epochs"]
-nt_config.nCorrection = hp["nt_ncorr"]
-nt_config.tolFun = 1.0 * np.finfo(float).eps
-tf_optimizer = tf.keras.optimizers.Adam(
-  learning_rate=hp["tf_lr"],
-  beta_1=hp["tf_b1"],
-  epsilon=hp["tf_eps"])
 
 pinn = SchrodingerInformedNN(hp, logger, X_f, x0, u0, v0, tb, ub, lb)
 

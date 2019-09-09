@@ -17,8 +17,9 @@ eqnPath = "1d-burgers"
 sys.path.append(eqnPath)
 sys.path.append("utils")
 from custom_lbfgs import lbfgs, Struct
-from burgersutil import prep_data, Logger, plot_ide_disc_results
+from burgersutil import prep_data, plot_ide_disc_results
 from neuralnetwork import NeuralNetwork
+from logger import Logger
 
 #%% HYPER PARAMETERS
 
