@@ -38,18 +38,18 @@ else:
   hp["layers"] = [2, 100, 100, 100, 100, 2]
   # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
   hp["tf_epochs"] = 100
-  hp["tf_lr"] = 0.03
+  hp["tf_lr"] = 0.06
   hp["tf_b1"] = 0.99
   hp["tf_eps"] = 1e-1 
   # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-  hp["nt_epochs"] = 0
-  hp["nt_lr"] = 1.0
+  hp["nt_epochs"] = 500
+  hp["nt_lr"] = 0.8
   hp["nt_ncorr"] = 50
 
 #%% DEFINING THE MODEL
 
 class SchrodingerInformedNN(NeuralNetwork):
-  def __init__(self, hp, logger, X_f, ub, lb):
+  def __init__(self, hp, logger, X_f, x0, u0, v0, tb, ub, lb):
     super().__init__(hp, logger, ub, lb)
 
     X_lb = np.concatenate((0*tb + lb[0], tb), 1) # (lb[0], tb)
@@ -62,23 +62,25 @@ class SchrodingerInformedNN(NeuralNetwork):
     self.X_lb = tf.convert_to_tensor(np.hstack((self.x_lb, self.t_lb)), dtype=self.dtype)
     self.X_ub = tf.convert_to_tensor(np.hstack((self.x_ub, self.t_ub)), dtype=self.dtype)
 
+    self.X0 = tf.convert_to_tensor(np.concatenate((x0, 0*x0), 1), dtype=self.dtype) # (x0, 0)
+    self.x0 = X0[:,0:1]
+    self.t0 = X0[:,1:2]
+    self.u0 = u0
+    self.v0 = v0
+
     # Separating the collocation coordinates
     self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
     self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=self.dtype)
     
   # Defining custom loss
-  def loss(self, h, h_pred):
-    u0 = h[:,0:1]
-    v0 = h[:,1:2]
-    u0_pred = h_pred[:,0:1]
-    v0_pred = h_pred[:,1:2]
-
+  def loss(self):
+    u0_pred, v0_pred, _, _ = self.uv_model(self.X0)
     u_lb_pred, v_lb_pred, u_x_lb_pred, v_x_lb_pred = self.uv_model(self.X_lb)
     u_ub_pred, v_ub_pred, u_x_ub_pred, v_x_ub_pred = self.uv_model(self.X_ub)
     f_u_pred, f_v_pred = self.f_model()
 
-    return tf.reduce_mean(tf.square(u0 - u0_pred)) + \
-           tf.reduce_mean(tf.square(v0 - v0_pred)) + \
+    return tf.reduce_mean(tf.square(self.u0 - u0_pred)) + \
+           tf.reduce_mean(tf.square(self.v0 - v0_pred)) + \
            tf.reduce_mean(tf.square(u_lb_pred - u_ub_pred)) + \
            tf.reduce_mean(tf.square(v_lb_pred - v_ub_pred)) + \
            tf.reduce_mean(tf.square(u_x_lb_pred - u_x_ub_pred)) + \
@@ -142,6 +144,58 @@ class SchrodingerInformedNN(NeuralNetwork):
     
     return f_u, f_v
 
+  def grad(self):
+    with tf.GradientTape() as tape:
+      tape.watch(self.wrap_training_variables())
+      loss_value = self.loss()
+    return loss_value, tape.gradient(loss_value, self.wrap_training_variables())
+
+  def get_loss_and_flat_grad(self):
+    def loss_and_flat_grad(w):
+      with tf.GradientTape() as tape:
+        self.set_weights(w)
+        loss_value = self.loss()
+      grad = tape.gradient(loss_value, self.wrap_training_variables())
+      grad_flat = []
+      for g in grad:
+        grad_flat.append(tf.reshape(g, [-1]))
+      grad_flat =  tf.concat(grad_flat, 0)
+      return loss_value, grad_flat
+      
+    return loss_and_flat_grad
+
+  def summary(self):
+    return self.model.summary()
+
+  # The training function
+  def fit(self):
+    self.logger.log_train_start(self)
+
+    self.logger.log_train_opt("Adam")
+    for epoch in range(self.tf_epochs):
+      # Optimization step
+      loss_value, grads = self.grad()
+      self.tf_optimizer.apply_gradients(zip(grads, self.wrap_training_variables()))
+      self.logger.log_train_epoch(epoch, loss_value)
+    
+    self.logger.log_train_opt("LBFGS")
+    loss_and_flat_grad = self.get_loss_and_flat_grad()
+    # tfp.optimizer.lbfgs_minimize(
+    #   loss_and_flat_grad,
+    #   initial_position=self.get_weights(),
+    #   num_correction_pairs=nt_config.nCorrection,
+    #   max_iterations=nt_config.maxIter,
+    #   f_relative_tolerance=nt_config.tolFun,
+    #   tolerance=nt_config.tolFun,
+    #   parallel_iterations=6)
+    lbfgs(loss_and_flat_grad,
+      self.get_weights(),
+      self.nt_config, Struct(), True,
+      lambda epoch, loss, is_iter:
+        self.logger.log_train_epoch(epoch, loss, "", is_iter))
+
+    self.logger.log_train_end(self.tf_epochs + self.nt_config.maxIter)
+
   def predict(self, X_star):
     h_pred = self.model(X_star)
     u_pred = h_pred[:,0:1]
@@ -173,7 +227,7 @@ tf_optimizer = tf.keras.optimizers.Adam(
   beta_1=hp["tf_b1"],
   epsilon=hp["tf_eps"])
 
-pinn = SchrodingerInformedNN(hp, logger, X_f, ub, lb)
+pinn = SchrodingerInformedNN(hp, logger, X_f, x0, u0, v0, tb, ub, lb)
 
 # Defining the error function for the logger
 def error():
@@ -183,7 +237,7 @@ def error():
 logger.set_error_fn(error)
 
 # Training the PINN
-pinn.fit(X0, H0)
+pinn.fit()
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, v_pred = pinn.predict(X_star)
