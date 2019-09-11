@@ -1,29 +1,21 @@
-#%% IMPORTING/SETTING UP PATHS
-
 import sys
 import json
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import numpy as np
-import tensorflow_probability as tfp
+
+from schrodingerutil import prep_data, plot_inf_cont_results
+from logger import Logger
+from neuralnetwork import NeuralNetwork
 
 # Manually making sure the numpy random seeds are "the same" on all devices
 np.random.seed(1234)
 tf.random.set_seed(1234)
 
-#%% LOCAL IMPORTS
+
+# HYPER PARAMETERS
 
 eqnPath = "1dcomplex-schrodinger"
-sys.path.append(eqnPath)
-sys.path.append("utils")
-from custom_lbfgs import lbfgs, Struct
-from schrodingerutil import prep_data, plot_inf_cont_results
-from neuralnetwork import NeuralNetwork
-from logger import Logger
-
-#%% HYPER PARAMETERS
-
 if len(sys.argv) > 1:
   with open(sys.argv[1]) as hpFile:
     hp = json.load(hpFile)
@@ -38,12 +30,12 @@ else:
   # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
   hp["layers"] = [2, 100, 100, 100, 100, 2]
   # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-  hp["tf_epochs"] = 50
-  hp["tf_lr"] = 0.06
+  hp["tf_epochs"] = 500
+  hp["tf_lr"] = 0.03
   hp["tf_b1"] = 0.99
-  hp["tf_eps"] = 1e-1 
+  hp["tf_eps"] = 1e-1
   # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-  hp["nt_epochs"] = 1000
+  hp["nt_epochs"] = 156
   hp["nt_lr"] = 1.2
   hp["nt_ncorr"] = 50
 
@@ -86,7 +78,7 @@ class SchrodingerInformedNN(NeuralNetwork):
     mse_f = tf.reduce_mean(tf.square(f_u_pred)) + \
            tf.reduce_mean(tf.square(f_v_pred))
     
-    print(f"mse_0 {mse_0}    mse_b {mse_b}    mse_f    {mse_f}")
+    # print(f"mse_0 {mse_0}    mse_b {mse_b}    mse_f    {mse_f}")
     return mse_0 + mse_b + mse_f
            
 
@@ -219,7 +211,7 @@ x, t, X, T, Exact_u, Exact_v, Exact_h, \
   ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(path, hp["N_0"], hp["N_b"], hp["N_f"], noise=0.0)
 
 # Creating the model
-logger = Logger(frequency=10, hp=hp)
+logger = Logger(frequency=1, hp=hp)
 
 pinn = SchrodingerInformedNN(hp, logger, X_f, x0, u0, v0, tb, ub, lb)
 
@@ -240,3 +232,5 @@ h_pred = np.sqrt(u_pred**2 + v_pred**2)
 #%% PLOTTING
 plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb,
   save_path=eqnPath, save_hp=hp) 
+
+#%%
