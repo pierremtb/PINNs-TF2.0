@@ -47,9 +47,11 @@ class NeuralNetwork(object):
         self.logger = logger
 
     # Defining custom loss
+    @tf.function
     def loss(self, u, u_pred):
         return tf.reduce_mean(tf.square(u - u_pred))
 
+    @tf.function
     def grad(self, X, u):
         with tf.GradientTape() as tape:
             loss_value = self.loss(u, self.model(X))
@@ -72,7 +74,7 @@ class NeuralNetwork(object):
             w.extend(weights)
             w.extend(biases)
         if convert_to_tensor:
-            w = tf.convert_to_tensor(w, dtype=self.dtype)
+            w = self.tensor(w)
         return w
 
     def set_weights(self, w):
@@ -100,8 +102,11 @@ class NeuralNetwork(object):
 
         return loss_and_flat_grad
 
-    def summary(self):
-        return self.model.summary()
+    def tf_optimization(self, X_u, u):
+        self.logger.log_train_opt("Adam")
+        for epoch in range(self.tf_epochs):
+            loss_value = self.tf_optimization_step(X_u, u)
+            self.logger.log_train_epoch(epoch, loss_value)
 
     @tf.function
     def tf_optimization_step(self, X_u, u):
@@ -110,19 +115,7 @@ class NeuralNetwork(object):
                 zip(grads, self.wrap_training_variables()))
         return loss_value
 
-    # The training function
-    def fit(self, X_u, u):
-        self.logger.log_train_start(self)
-
-        # Creating the tensors
-        X_u = tf.convert_to_tensor(X_u, dtype=self.dtype)
-        u = tf.convert_to_tensor(u, dtype=self.dtype)
-
-        self.logger.log_train_opt("Adam")
-        for epoch in range(self.tf_epochs):
-            loss_value = self.tf_optimization_step(X_u, u)
-            self.logger.log_train_epoch(epoch, loss_value)
-
+    def nt_optimization(self, X_u, u):
         self.logger.log_train_opt("LBFGS")
         loss_and_flat_grad = self.get_loss_and_flat_grad(X_u, u)
         # tfp.optimizer.lbfgs_minimize(
@@ -133,14 +126,35 @@ class NeuralNetwork(object):
         #   f_relative_tolerance=nt_config.tolFun,
         #   tolerance=nt_config.tolFun,
         #   parallel_iterations=6)
+        self.nt_optimization_steps(loss_and_flat_grad)
+
+    def nt_optimization_steps(self, loss_and_flat_grad):
         lbfgs(loss_and_flat_grad,
               self.get_weights(),
               self.nt_config, Struct(), True,
               lambda epoch, loss, is_iter:
               self.logger.log_train_epoch(epoch, loss, "", is_iter))
 
+    def fit(self, X_u, u):
+        self.logger.log_train_start(self)
+
+        # Creating the tensors
+        X_u = self.tensor(X_u)
+        u = self.tensor(u)
+
+        # Optimizing
+        self.tf_optimization(X_u, u)
+        self.nt_optimization(X_u, u)
+
         self.logger.log_train_end(self.tf_epochs + self.nt_config.maxIter)
 
     def predict(self, X_star):
         u_pred = self.model(X_star)
         return u_pred.numpy()
+
+    def summary(self):
+        return self.model.summary()
+
+    def tensor(self, X):
+        return tf.convert_to_tensor(X, dtype=self.dtype)
+

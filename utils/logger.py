@@ -4,11 +4,10 @@ import time
 from datetime import datetime
 
 class Logger(object):
-  def __init__(self, frequency=10, hp=None):
-    if hp != None:
-      print("Hyperparameters:")
-      print(json.dumps(hp, indent=2))
-      print()
+  def __init__(self, hp):
+    print("Hyperparameters:")
+    print(json.dumps(hp, indent=2))
+    print()
     
     print("TensorFlow version: {}".format(tf.__version__))
     print("Eager execution: {}".format(tf.executing_eagerly()))
@@ -16,7 +15,7 @@ class Logger(object):
     
 
     self.start_time = time.time()
-    self.frequency = frequency
+    self.frequency = hp["log_frequency"]
 
   def __get_elapsed(self):
     return datetime.fromtimestamp(time.time() - self.start_time).strftime("%M:%S")

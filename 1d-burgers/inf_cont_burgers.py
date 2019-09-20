@@ -14,9 +14,9 @@ tf.random.set_seed(1234)
 eqnPath = "1d-burgers"
 sys.path.append(eqnPath)
 sys.path.append("utils")
-from burgersutil import prep_data, plot_ide_cont_results
+from burgersutil import prep_data, plot_inf_cont_results
 from neuralnetwork import NeuralNetwork
-from logger import LoggerqnPath = "1d-burgers"
+from logger import Logger
 
 # HYPER PARAMETERS
 
@@ -50,8 +50,8 @@ class BurgersInformedNN(NeuralNetwork):
     self.nu = nu
 
     # Separating the collocation coordinates
-    self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
-    self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=self.dtype)
+    self.x_f = self.tensor(X_f[:, 0:1])
+    self.t_f = self.tensor(X_f[:, 1:2])
 
   # Defining custom loss
   def loss(self, u, u_pred):
@@ -103,7 +103,7 @@ x, t, X, T, Exact_u, X_star, u_star, \
   X_u_train, u_train, X_f, ub, lb = prep_data(path, hp["N_u"], hp["N_f"], noise=0.0)
 
 # Creating the model
-logger = Logger(frequency=100)
+logger = Logger(frequency=10)
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb, nu=0.01/np.pi)
 
 # Defining the error function for the logger and training
