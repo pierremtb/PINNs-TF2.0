@@ -30,12 +30,12 @@ else:
     # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
     hp["layers"] = [2, 100, 100, 100, 100, 2]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-    hp["tf_epochs"] = 500
-    hp["tf_lr"] = 0.03
+    hp["tf_epochs"] = 5
+    hp["tf_lr"] = 0.05
     hp["tf_b1"] = 0.99
     hp["tf_eps"] = 1e-1
     # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-    hp["nt_epochs"] = 156
+    hp["nt_epochs"] = 500
     hp["nt_lr"] = 1.2
     hp["nt_ncorr"] = 50
 
@@ -43,7 +43,7 @@ else:
 
 
 class SchrodingerInformedNN(NeuralNetwork):
-    def __init__(self, hp, logger, X_f, x0, u0, v0, tb, ub, lb):
+    def __init__(self, hp, logger, X_f, tb, ub, lb):
         super().__init__(hp, logger, ub, lb)
 
         X_lb = np.concatenate((0*tb + lb[0], tb), 1)  # (lb[0], tb)
@@ -51,39 +51,9 @@ class SchrodingerInformedNN(NeuralNetwork):
         self.X_lb = tf.convert_to_tensor(X_lb, dtype=self.dtype)
         self.X_ub = tf.convert_to_tensor(X_ub, dtype=self.dtype)
 
-        self.X0 = tf.convert_to_tensor(np.concatenate(
-            (x0, 0*x0), 1), dtype=self.dtype)  # (x0, 0)
-        self.u0 = tf.convert_to_tensor(u0, dtype=self.dtype)
-        self.v0 = tf.convert_to_tensor(v0, dtype=self.dtype)
-
         # Separating the collocation coordinates
         self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
         self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=self.dtype)
-
-    # Defining custom loss
-    def loss(self):
-        # u0_pred, v0_pred, _, _ = self.uv_model(self.X0)
-        h0_pred = self.model(self.X0)
-        u0_pred = h0_pred[:, 0:1]
-        v0_pred = h0_pred[:, 1:2]
-        u_lb_pred, v_lb_pred, u_x_lb_pred, v_x_lb_pred = self.uv_model(
-            self.X_lb)
-        u_ub_pred, v_ub_pred, u_x_ub_pred, v_x_ub_pred = self.uv_model(
-            self.X_ub)
-        f_u_pred, f_v_pred = self.f_model()
-
-        mse_0 = tf.reduce_mean(tf.square(self.u0 - u0_pred)) + \
-            tf.reduce_mean(tf.square(self.v0 - v0_pred))
-        mse_b = tf.reduce_mean(tf.square(u_lb_pred - u_ub_pred)) + \
-            tf.reduce_mean(tf.square(v_lb_pred - v_ub_pred)) + \
-            tf.reduce_mean(tf.square(u_x_lb_pred - u_x_ub_pred)) + \
-            tf.reduce_mean(tf.square(v_x_lb_pred - v_x_ub_pred))
-
-        mse_f = tf.reduce_mean(tf.square(f_u_pred)) + \
-            tf.reduce_mean(tf.square(f_v_pred))
-
-        # print(f"mse_0 {mse_0}    mse_b {mse_b}    mse_f    {mse_f}")
-        return mse_0 + mse_b + mse_f
 
     # Decomposes the multi-output into the complex values and spatial derivatives
 
@@ -147,41 +117,71 @@ class SchrodingerInformedNN(NeuralNetwork):
 
         return f_u, f_v
 
-    def grad(self):
-        with tf.GradientTape() as tape:
-            tape.watch(self.wrap_training_variables())
-            loss_value = self.loss()
-        return loss_value, tape.gradient(loss_value, self.wrap_training_variables())
+    # Defining custom loss
+    def loss(self, uv, uv_pred):
+        u0 = uv[:, 0:1]
+        v0 = uv[:, 1:2]
+        u0_pred = uv_pred[:, 0:1]
+        v0_pred = uv_pred[:, 1:2]
+        u_lb_pred, v_lb_pred, u_x_lb_pred, v_x_lb_pred = self.uv_model(
+            self.X_lb)
+        u_ub_pred, v_ub_pred, u_x_ub_pred, v_x_ub_pred = self.uv_model(
+            self.X_ub)
+        f_u_pred, f_v_pred = self.f_model()
 
-    def get_loss_and_flat_grad(self):
-        def loss_and_flat_grad(w):
-            with tf.GradientTape() as tape:
-                self.set_weights(w)
-                tape.watch(self.wrap_training_variables())
-                loss_value = self.loss()
-            grad = tape.gradient(loss_value, self.wrap_training_variables())
-            grad_flat = []
-            for g in grad:
-                grad_flat.append(tf.reshape(g, [-1]))
-            grad_flat = tf.concat(grad_flat, 0)
-            return loss_value, grad_flat
+        mse_0 = tf.reduce_mean(tf.square(u0 - u0_pred)) + \
+            tf.reduce_mean(tf.square(v0 - v0_pred))
+        mse_b = tf.reduce_mean(tf.square(u_lb_pred - u_ub_pred)) + \
+            tf.reduce_mean(tf.square(v_lb_pred - v_ub_pred)) + \
+            tf.reduce_mean(tf.square(u_x_lb_pred - u_x_ub_pred)) + \
+            tf.reduce_mean(tf.square(v_x_lb_pred - v_x_ub_pred))
 
-        return loss_and_flat_grad
+        mse_f = tf.reduce_mean(tf.square(f_u_pred)) + \
+            tf.reduce_mean(tf.square(f_v_pred))
+
+        # print(f"mse_0 {mse_0}    mse_b {mse_b}    mse_f    {mse_f}")
+        return mse_0 + mse_b + mse_f
+
+    #def grad(self, X_h, h):
+    #    with tf.GradientTape() as tape:
+    #        tape.watch(self.wrap_training_variables())
+    #        loss_value = self.loss()
+    #    return loss_value, tape.gradient(loss_value, self.wrap_training_variables())
+
+    #def get_loss_and_flat_grad(self):
+    #    def loss_and_flat_grad(w):
+    #        with tf.GradientTape() as tape:
+    #            self.set_weights(w)
+    #            tape.watch(self.wrap_training_variables())
+    #            loss_value = self.loss()
+    #        grad = tape.gradient(loss_value, self.wrap_training_variables())
+    #        grad_flat = []
+    #        for g in grad:
+    #            grad_flat.append(tf.reshape(g, [-1]))
+    #        grad_flat = tf.concat(grad_flat, 0)
+    #        return loss_value, grad_flat
+#
+     #   return loss_and_flat_grad
 
     def summary(self):
         return self.model.summary()
 
     # The training function
-    def fit(self):
-        self.logger.log_train_start(self)
+    #def fit(self, x0, u0, v0):
+    #    self.logger.log_train_start(self)
 
-        self.logger.log_train_opt("Adam")
-        for epoch in range(self.tf_epochs):
-            # Optimization step
-            loss_value, grads = self.grad()
-            self.tf_optimizer.apply_gradients(
-                zip(grads, self.wrap_training_variables()))
-            self.logger.log_train_epoch(epoch, loss_value)
+     #   X0 = tf.convert_to_tensor(np.concatenate(
+      #      (x0, 0*x0), 1), dtype=self.dtype)
+       # u0 = tf.convert_to_tensor(u0, dtype=self.dtype)
+       # v0 = tf.convert_to_tensor(v0, dtype=self.dtype)
+
+        #self.logger.log_train_opt("Adam")
+        #for epoch in range(self.tf_epochs):
+        #    # Optimization step
+        #    loss_value, grads = self.grad()
+        #    self.tf_optimizer.apply_gradients(
+        #        zip(grads, self.wrap_training_variables()))
+        #    self.logger.log_train_epoch(epoch, loss_value)
 
         # self.logger.log_train_opt("LBFGS")
         # loss_and_flat_grad = self.get_loss_and_flat_grad()
@@ -199,7 +199,7 @@ class SchrodingerInformedNN(NeuralNetwork):
         #  lambda epoch, loss, is_iter:
         #    self.logger.log_train_epoch(epoch, loss, "", is_iter))
 
-        self.logger.log_train_end(self.tf_epochs + self.nt_config.maxIter)
+       # self.logger.log_train_end(self.tf_epochs + self.nt_config.maxIter)
 
     def predict(self, X_star):
         h_pred = self.model(X_star)
@@ -220,7 +220,7 @@ x, t, X, T, Exact_u, Exact_v, Exact_h, \
 # Creating the model
 logger = Logger(frequency=1, hp=hp)
 
-pinn = SchrodingerInformedNN(hp, logger, X_f, x0, u0, v0, tb, ub, lb)
+pinn = SchrodingerInformedNN(hp, logger, X_f, tb, ub, lb)
 
 # Defining the error function for the logger
 
@@ -234,7 +234,7 @@ def error():
 logger.set_error_fn(error)
 
 # Training the PINN
-pinn.fit()
+pinn.fit(x0, tf.concat([u0, v0], axis=1))
 
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, v_pred = pinn.predict(X_star)
@@ -243,5 +243,3 @@ h_pred = np.sqrt(u_pred**2 + v_pred**2)
 # %% PLOTTING
 plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb,
                       save_path=eqnPath, save_hp=hp)
-
-# %%

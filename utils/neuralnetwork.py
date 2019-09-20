@@ -21,8 +21,9 @@ class NeuralNetwork(object):
             beta_1=hp["tf_b1"],
             epsilon=hp["tf_eps"])
 
+        self.dtype = "float64"
         # Descriptive Keras model
-        tf.keras.backend.set_floatx("float32")
+        tf.keras.backend.set_floatx(self.dtype)
         self.model = tf.keras.Sequential()
         self.model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
         self.model.add(tf.keras.layers.Lambda(
@@ -44,7 +45,6 @@ class NeuralNetwork(object):
                 self.sizes_b.append(int(width if i != 0 else layers[1]))
 
         self.logger = logger
-        self.dtype = tf.float32
 
     # Defining custom loss
     def loss(self, u, u_pred):
@@ -104,11 +104,11 @@ class NeuralNetwork(object):
         return self.model.summary()
 
     @tf.function
-    def tf_optimization_step(self, epoch, X_u, u):
+    def tf_optimization_step(self, X_u, u):
         loss_value, grads = self.grad(X_u, u)
         self.tf_optimizer.apply_gradients(
                 zip(grads, self.wrap_training_variables()))
-        self.logger.log_train_epoch(epoch, loss_value)
+        return loss_value
 
     # The training function
     def fit(self, X_u, u):
@@ -120,8 +120,8 @@ class NeuralNetwork(object):
 
         self.logger.log_train_opt("Adam")
         for epoch in range(self.tf_epochs):
-            # Optimization step
-            self.tf_optimization_step(epoch, X_u, u)
+            loss_value = self.tf_optimization_step(X_u, u)
+            self.logger.log_train_epoch(epoch, loss_value)
 
         self.logger.log_train_opt("LBFGS")
         loss_and_flat_grad = self.get_loss_and_flat_grad(X_u, u)
