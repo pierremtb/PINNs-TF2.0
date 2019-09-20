@@ -27,9 +27,12 @@ class NeuralNetwork(object):
         self.model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
         self.model.add(tf.keras.layers.Lambda(
             lambda X: 2.0*(X - lb)/(ub - lb) - 1.0))
-        for width in layers[1:]:
+        for width in layers[1:-1]:
             self.model.add(tf.keras.layers.Dense(
                 width, activation=tf.nn.tanh,
+                kernel_initializer="glorot_normal"))
+        self.model.add(tf.keras.layers.Dense(
+                layers[-1], activation=None,
                 kernel_initializer="glorot_normal"))
 
         # Computing the sizes of weights/biases for future decomposition
@@ -100,6 +103,13 @@ class NeuralNetwork(object):
     def summary(self):
         return self.model.summary()
 
+    @tf.function
+    def tf_optimization_step(self, epoch, X_u, u):
+        loss_value, grads = self.grad(X_u, u)
+        self.tf_optimizer.apply_gradients(
+                zip(grads, self.wrap_training_variables()))
+        self.logger.log_train_epoch(epoch, loss_value)
+
     # The training function
     def fit(self, X_u, u):
         self.logger.log_train_start(self)
@@ -111,10 +121,7 @@ class NeuralNetwork(object):
         self.logger.log_train_opt("Adam")
         for epoch in range(self.tf_epochs):
             # Optimization step
-            loss_value, grads = self.grad(X_u, u)
-            self.tf_optimizer.apply_gradients(
-                zip(grads, self.wrap_training_variables()))
-            self.logger.log_train_epoch(epoch, loss_value)
+            self.tf_optimization_step(epoch, X_u, u)
 
         self.logger.log_train_opt("LBFGS")
         loss_and_flat_grad = self.get_loss_and_flat_grad(X_u, u)

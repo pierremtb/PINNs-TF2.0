@@ -1,5 +1,3 @@
-#%% IMPORTING/SETTING UP PATHS
-
 import sys
 import json
 import os
@@ -11,16 +9,16 @@ import tensorflow_probability as tfp
 np.random.seed(1234)
 tf.random.set_seed(1234)
 
-#%% LOCAL IMPORTS
+# LOCAL IMPORTS
 
 eqnPath = "1d-burgers"
 sys.path.append(eqnPath)
 sys.path.append("utils")
-from burgersutil import prep_data, plot_inf_cont_results
+from burgersutil import prep_data, plot_ide_cont_results
 from neuralnetwork import NeuralNetwork
-from logger import Logger
+from logger import LoggerqnPath = "1d-burgers"
 
-#%% HYPER PARAMETERS
+# HYPER PARAMETERS
 
 if len(sys.argv) > 1:
   with open(sys.argv[1]) as hpFile:
