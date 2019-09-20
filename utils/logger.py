@@ -39,7 +39,7 @@ class Logger(object):
 
   def log_train_opt(self, name):
     # print(f"tf_epoch =      0  elapsed = 00:00  loss = 2.7391e-01  error = 9.0843e-01")
-    print(f"—— Starting {name} optimization ——")
+    print(f"-- Starting {name} optimization --")
 
   def log_train_end(self, epoch, custom=""):
     print("==================")
