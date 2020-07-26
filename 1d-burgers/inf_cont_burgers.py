@@ -28,16 +28,18 @@ else:
     # Data size on the solution u
     hp["N_u"] = 100
     # Collocation points size, where we’ll check for f = 0
-    hp["N_f"] = 10000
+    # [mtsokol] for bigger values slows down drastically
+    hp["N_f"] = 100
     # DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
-    hp["layers"] = [2, 20, 20, 20, 20, 20, 20, 20, 20, 1]
+    # [mtsokol] 7x7=49 for one_hot_encoding, more about it in neuralnetwork.py
+    hp["layers"] = [49, 20, 20, 20, 20, 20, 20, 20, 20, 1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
     hp["tf_epochs"] = 100
     hp["tf_lr"] = 0.03
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None
     # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-    hp["nt_epochs"] = 200
+    hp["nt_epochs"] = 100
     hp["nt_lr"] = 0.8
     hp["nt_ncorr"] = 50
     hp["log_frequency"] = 10
@@ -73,7 +75,7 @@ class BurgersInformedNN(NeuralNetwork):
             X_f = tf.stack([self.x_f[:, 0], self.t_f[:, 0]], axis=1)
 
             # Getting the prediction
-            u = self.model(X_f)
+            u = self.bspline_model(X_f)
             # Deriving INSIDE the tape (since we’ll need the x derivative of this later, u_xx)
             u_x = tape.gradient(u, self.x_f)
 
@@ -87,13 +89,13 @@ class BurgersInformedNN(NeuralNetwork):
         nu = self.get_params(numpy=True)
 
         # Buidling the PINNs
-        return u_t + u*u_x - nu*u_xx
+        return u_t - nu*u_xx
 
     def get_params(self, numpy=False):
         return self.nu
 
     def predict(self, X_star):
-        u_star = self.model(X_star)
+        u_star = self.bspline_model(X_star)
         f_star = self.f_model()
         return u_star.numpy(), f_star.numpy()
 
@@ -106,15 +108,18 @@ x, t, X, T, Exact_u, X_star, u_star, \
     X_u_train, u_train, X_f, ub, lb = prep_data(
         path, hp["N_u"], hp["N_f"], noise=0.0)
 
+# [mtsokol] for bigger values slows down drastically
+X_star = X_star[::100, :]
+u_star = u_star[::100, :]
+
 # Creating the model
 logger = Logger(hp)
-pinn = BurgersInformedNN(hp, logger, X_f, ub, lb, nu=0.01/np.pi)
+pinn = BurgersInformedNN(hp, logger, X_f, ub, lb, nu=0.4)
 
 # Defining the error function for the logger and training
 def error():
     u_pred, _ = pinn.predict(X_star)
     return np.linalg.norm(u_star - u_pred, 2) / np.linalg.norm(u_star, 2)
-
 
 logger.set_error_fn(error)
 pinn.fit(X_u_train, u_train)
