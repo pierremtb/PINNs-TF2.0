@@ -32,6 +32,8 @@ else:
     hp["N_f"] = 100
     # DeepNN topology (2-sized input [x t], 8 hidden layer of 20-width, 1-sized output [u]
     # [mtsokol] 7x7=49 for one_hot_encoding, more about it in neuralnetwork.py
+    # [mtsokol] IMPORTANT! when modifying input size remember to modify BSplineLayer(num_elem=) param. (Should be done in one place only. Will fix it)
+    # [mtsokol] num_elem = sqrt(layers[0]) - 2 (only for one_hot_encoding)
     hp["layers"] = [49, 20, 20, 20, 20, 20, 20, 20, 20, 1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
     hp["tf_epochs"] = 100

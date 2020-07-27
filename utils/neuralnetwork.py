@@ -27,15 +27,17 @@ class BSplineLayer(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         self.layers = [tf.keras.layers.Lambda(lambda X: X)] # Redundant I guess
-        for size in self.layer_sizes:
+        for size in self.layer_sizes[1:-1]:
             self.layers.append(tf.keras.layers.Dense(size, activation=tf.nn.tanh, kernel_initializer="glorot_normal"))
         self.layers.append(tf.keras.layers.Dense(1, activation=tf.nn.tanh, kernel_initializer="glorot_normal"))
         # BSpline indices can be done either by simple (i,j) encoding or one_hot_encoding
         # Current implementation is one_hot_encoding, line below is for the reference of (i,j) encoding
         # self.cofs = [[tf.math.floor(i / 7.0), i % 7.0] for i in range(49)]
+        input_shape = self.layer_sizes[0]
+        self.matrix_size = tf.math.sqrt(float(input_shape))
         one_hot_encoded = []
-        for i in range(49):
-            row = np.zeros((49,))
+        for i in range(input_shape):
+            row = np.zeros((input_shape,))
             row[i] = 1
             one_hot_encoded.append(row)
         self.cofs = tf.convert_to_tensor(one_hot_encoded, dtype=tf.float32) # cofs ->> coefficients' indices
@@ -44,7 +46,7 @@ class BSplineLayer(tf.keras.layers.Layer):
         output = self.cofs # first we need to ask our NN for coefficients for each 2D BSpline...
         for layer in self.layers:
             output = layer(output)
-        u = tf.reshape(output, [7,7]) * 2.0 # ...and reshape it. IMPORTANT! I think we need to multiply it to scale bc otherwise all coefficients will be almost 0 and with BSplines values result ends up as 0
+        u = tf.reshape(output, [self.matrix_size,self.matrix_size]) * 3.0 # ...and reshape it. IMPORTANT! I think we need to multiply it to scale bc otherwise all coefficients will be almost 0 and with BSplines values result ends up as 0
         return tf.map_fn(lambda xy : self.eval_point_2d(u, (xy[0] + 1.0) / 2.0, xy[1], self.num_elem, self.degree), input) # for each learning example we need to compute `u` from BSpline combination (standard FEM procedure after solving coefficients)
 
 class NeuralNetwork(object):
@@ -77,7 +79,7 @@ class NeuralNetwork(object):
 
         bspline_model = tf.keras.Sequential()
         bspline_model.add(tf.keras.layers.InputLayer(input_shape=(2,)))
-        self.bspline_layer = BSplineLayer(layers[1:-1], num_elem=5, degree=3) # this layer contains other layers
+        self.bspline_layer = BSplineLayer(layers, num_elem=5, degree=3) # this layer contains other layers. IMPORTANT! for current vesion `degree` can't be changed witout changing base functions choice. degree=3 is `_quadratic` in `get_spline`
         bspline_model.add(self.bspline_layer)
         self.bspline_model = bspline_model
 
