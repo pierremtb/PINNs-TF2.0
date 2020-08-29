@@ -15,7 +15,8 @@ class BSplineLayer(tf.keras.layers.Layer):
         pos_x = x * num_elem
         pos_spl = tf.cast(tf.math.floor(pos_x), dtype=tf.int32) + tf.constant(1) # let's get which element we're in...
         pos_spl = tf.cond(pos_spl > num_elem, lambda: num_elem, lambda: pos_spl) # ...and not to get out of range (could be done better to avoid cond)
-        splines = inter.bspline._quadratic(pos_x%1.0) # comptue spline values (this impl support only [0,1] range)
+        x = tf.cond(pos_x % 1.0 == 0.0 and pos_x != 0.0, lambda: tf.constant(1.0), lambda: pos_x % 1.0)
+        splines = inter.bspline._quadratic(x) # comptue spline values (this impl support only [0,1] range)
         return splines, pos_spl
 
     def eval_point_2d(self, u, x, y, num_elem, degree): # compute `u` from 2D splines
@@ -46,7 +47,7 @@ class BSplineLayer(tf.keras.layers.Layer):
         output = self.cofs # first we need to ask our NN for coefficients for each 2D BSpline...
         for layer in self.layers:
             output = layer(output)
-        u = tf.reshape(output, [self.matrix_size,self.matrix_size]) * 3.0 # ...and reshape it. IMPORTANT! I think we need to multiply it to scale bc otherwise all coefficients will be almost 0 and with BSplines values result ends up as 0
+        u = tf.reshape(output, [self.matrix_size,self.matrix_size]) * 2.0 # ...and reshape it. IMPORTANT! I think we need to multiply it to scale bc otherwise all coefficients will be almost 0 and with BSplines values result ends up as 0
         return tf.map_fn(lambda xy : self.eval_point_2d(u, (xy[0] + 1.0) / 2.0, xy[1], self.num_elem, self.degree), input) # for each learning example we need to compute `u` from BSpline combination (standard FEM procedure after solving coefficients)
 
 class NeuralNetwork(object):

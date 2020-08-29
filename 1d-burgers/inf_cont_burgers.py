@@ -41,7 +41,7 @@ else:
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None
     # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-    hp["nt_epochs"] = 100
+    hp["nt_epochs"] = 0
     hp["nt_lr"] = 0.8
     hp["nt_ncorr"] = 50
     hp["log_frequency"] = 10
