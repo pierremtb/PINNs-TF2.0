@@ -1,16 +1,32 @@
 # Databricks notebook source
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
 print('this is a test notebook for AK to try the data read')
 
 # COMMAND ----------
 
 import sklearn
 import numpy as np
-import scipy as sp
+import scipy 
 
 import os, sys
 from pyDOE import lhs
 
 import matplotlib.pyplot as plt
+
+# COMMAND ----------
+
+dbutils.
+
+# COMMAND ----------
+
+# MAGIC %run '/Repos/adkiran@redventures.net/recsys_using_nn/1dcomplex-schrodinger/schroschrodingerutil.py'
+
+# COMMAND ----------
+
+from schrodingerutil import prep_data
 
 # COMMAND ----------
 
