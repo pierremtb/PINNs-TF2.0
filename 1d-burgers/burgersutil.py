@@ -1,4 +1,5 @@
 #%% Utils for Burger's equation
+# DUMMY LINE
 
 import scipy.io
 import numpy as np
