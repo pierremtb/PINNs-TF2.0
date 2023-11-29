@@ -1,4 +1,16 @@
 # Databricks notebook source
+# Databricks notebook source
+
+# COMMAND ----------
+
+ np
+
+# COMMAND ----------
+
+# MAGIC %run ./ipy_nbs/schrodingerutil
+
+# COMMAND ----------
+
 dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -18,11 +30,7 @@ import matplotlib.pyplot as plt
 
 # COMMAND ----------
 
-dbutils.
-
-# COMMAND ----------
-
-# MAGIC %run '/Repos/adkiran@redventures.net/recsys_using_nn/1dcomplex-schrodinger/schroschrodingerutil.py'
+# MAGIC %run '/Repos/adkiran@redventures.net/recsys_using_nn/1dcomplex-schrodinger/schrodingerutil'
 
 # COMMAND ----------
 

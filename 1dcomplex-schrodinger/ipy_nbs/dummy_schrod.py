@@ -1,6 +1,18 @@
 # Databricks notebook source
 # dummy
 print('inside dummy_schrod notebook')
+import scipy.io
+import numpy as np
+import time
+from datetime import datetime
+
+
+def prep_data():
+    print('\n inside prep data function')
+    return
+
+
+dbutils.notebook.exit(9)
 
 # COMMAND ----------
 
@@ -9,7 +21,7 @@ import scipy.io
 import numpy as np
 import tensorflow as tf
 import time
-from datetime import datetime
+from datetime import datetime9
 from pyDOE import lhs
 import os
 import json
