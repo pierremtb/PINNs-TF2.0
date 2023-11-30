@@ -3,10 +3,6 @@
 
 # COMMAND ----------
 
-dbutils.library.restartPython() 
-
-# COMMAND ----------
-
 import sys
 import json
 import os
@@ -29,10 +25,16 @@ tf.random.set_seed(1234)
 
 # COMMAND ----------
 
+sys.argv
+
+# COMMAND ----------
+
 # HYPER PARAMETERS
 
-eqnPath = "1dcomplex-schrodinger"
-if len(sys.argv) > 1:
+eqnPath = "/Workspace/Repos/adkiran@redventures.net/recsys_using_nn/1dcomplex-schrodinger/"
+
+if False:
+#if len(sys.argv) > 1:
     with open(sys.argv[1]) as hpFile:
         hp = json.load(hpFile)
 else:
@@ -55,6 +57,8 @@ else:
     hp["nt_lr"] = 1.2
     hp["nt_ncorr"] = 50
     hp["log_frequency"] = 10
+
+# COMMAND ----------
 
 # %% DEFINING THE MODEL
 
@@ -150,38 +154,51 @@ class SchrodingerInformedNN(NeuralNetwork):
         v_pred = h_pred[:, 1:2]
         return u_pred.numpy(), v_pred.numpy()
 
+# COMMAND ----------
+
 # %% TRAINING THE MODEL
 
 
 # Getting the data
+
+
 path = os.path.join(eqnPath, "data", "NLS.mat")
+print('Reading from this path:', path)
+
 x, t, X, T, Exact_u, Exact_v, Exact_h, \
     X_star, u_star, v_star, h_star, X_f, \
     ub, lb, tb, x0, u0, v0, X0, H0 = prep_data(
         path, hp["N_0"], hp["N_b"], hp["N_f"], noise=0.0)
+
+# COMMAND ----------
 
 # Creating the model
 logger = Logger(hp)
 
 pinn = SchrodingerInformedNN(hp, logger, X_f, tb, ub, lb)
 
+# COMMAND ----------
+
 # Defining the error function for the logger
-
-
 def error():
     u_pred, v_pred = pinn.predict(X_star)
     h_pred = np.sqrt(u_pred**2 + v_pred**2)
     return np.linalg.norm(h_star - h_pred, 2) / np.linalg.norm(h_star, 2)
 
-
 logger.set_error_fn(error)
+
+# COMMAND ----------
 
 # Training the PINN
 pinn.fit(x0, tf.concat([u0, v0], axis=1))
 
+# COMMAND ----------
+
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred, v_pred = pinn.predict(X_star)
 h_pred = np.sqrt(u_pred**2 + v_pred**2)
+
+# COMMAND ----------
 
 # %% PLOTTING
 plot_inf_cont_results(X_star, u_pred, v_pred, h_pred, Exact_h, X, T, x, t, ub, lb, x0, tb,
